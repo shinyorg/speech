@@ -1,12 +1,12 @@
 # Shiny.Speech
 
-Cross-platform speech services for .NET MAUI — speech-to-text, text-to-speech, audio capture, and audio playback with pluggable cloud providers.
+Cross-platform speech services for .NET MAUI and Blazor WebAssembly — speech-to-text, text-to-speech, audio capture, and audio playback with pluggable cloud providers.
 
 ## Libraries
 
 | Package | Description | Targets |
 |---------|-------------|---------|
-| **Shiny.Speech** | Core interfaces + native platform implementations (STT, TTS, audio capture, audio playback) | net10.0-ios, net10.0-android, net10.0-windows |
+| **Shiny.Speech** | Core interfaces + native platform implementations (STT, TTS, audio capture, audio playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (TTS) | net10.0 |
@@ -15,11 +15,12 @@ Cross-platform speech services for .NET MAUI — speech-to-text, text-to-speech,
 
 ### Native Platform Speech
 
-Use the built-in OS speech engines — no cloud account needed.
+Use the built-in OS speech engines — no cloud account needed. Works on MAUI (iOS, Android, Windows) and Blazor WebAssembly (via Web Speech API).
 
 ```csharp
 builder.Services.AddSpeechServices();
 // Registers: ISpeechToTextService, ITextToSpeechService, IAudioSource, IAudioPlayer
+// On Browser/WASM: auto-detected via OperatingSystem.IsBrowser()
 ```
 
 ### Azure AI Speech (Cloud)
@@ -110,6 +111,16 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 | iOS 15+ | SFSpeechRecognizer | AVSpeechSynthesizer | AVAudioEngine | AVAudioPlayer |
 | Android 26+ | SpeechRecognizer | Android TTS | AudioRecord | MediaPlayer |
 | Windows 10 19041+ | Windows.Media.SpeechRecognition | Windows.Media.SpeechSynthesis | AudioGraph | MediaPlayer |
+| Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Not supported | HTML5 `Audio` |
+
+### Browser (Blazor WebAssembly)
+
+No manifest changes needed — the browser prompts the user for microphone access automatically. Include the JS interop module in your `index.html`:
+```html
+<script src="shiny-speech.js"></script>
+```
+
+> **Note:** `IAudioSource` (raw PCM capture) is not supported in the browser. The Web Speech API handles audio internally. Audio playback (`IAudioPlayer`) accepts any browser-supported format via a base64 data URL.
 
 ### iOS/macOS
 

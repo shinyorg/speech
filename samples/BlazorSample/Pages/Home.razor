@@ -1,0 +1,136 @@
+@page "/"
+@using Shiny.Speech
+@inject ISpeechToTextService SpeechToText
+@inject ITextToSpeechService TextToSpeech
+
+<h1>Shiny Speech - Blazor WASM</h1>
+
+<h2>Text-to-Speech</h2>
+<div>
+    <input @bind="textToSpeak" placeholder="Enter text to speak..." style="width:300px" />
+    <button @onclick="SpeakAsync" disabled="@isSpeaking">Speak</button>
+    <button @onclick="StopSpeakingAsync" disabled="@(!isSpeaking)">Stop</button>
+</div>
+
+<hr />
+
+<h2>Speech-to-Text</h2>
+<div>
+    <button @onclick="ListenAsync" disabled="@isListening">Listen</button>
+    <button @onclick="StopListening" disabled="@(!isListening)">Stop</button>
+</div>
+<p><strong>@recognizedText</strong></p>
+<p style="color:gray">@statusText</p>
+
+<hr />
+
+<h2>Voices</h2>
+<button @onclick="LoadVoicesAsync">Load Voices</button>
+@if (voices != null)
+{
+    <ul>
+        @foreach (var voice in voices)
+        {
+            <li>@voice.Name (@voice.Culture.Name)</li>
+        }
+    </ul>
+}
+
+@code {
+    string textToSpeak = "Hello! I am the Shiny Speech library running in Blazor WebAssembly.";
+    string? recognizedText;
+    string? statusText;
+    bool isSpeaking;
+    bool isListening;
+    IReadOnlyList<VoiceInfo>? voices;
+    CancellationTokenSource? listenCts;
+
+    async Task SpeakAsync()
+    {
+        if (string.IsNullOrWhiteSpace(textToSpeak))
+            return;
+
+        isSpeaking = true;
+        statusText = "Speaking...";
+        StateHasChanged();
+
+        try
+        {
+            await TextToSpeech.SpeakAsync(textToSpeak);
+            statusText = "Done speaking.";
+        }
+        catch (Exception ex)
+        {
+            statusText = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSpeaking = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task StopSpeakingAsync()
+    {
+        await TextToSpeech.StopAsync();
+        isSpeaking = false;
+        statusText = "Stopped.";
+    }
+
+    async Task ListenAsync()
+    {
+        var access = await SpeechToText.RequestAccess();
+        if (access != AccessState.Available)
+        {
+            statusText = $"Speech recognition access: {access}";
+            return;
+        }
+
+        listenCts?.Cancel();
+        listenCts = new CancellationTokenSource();
+        isListening = true;
+        statusText = "Listening...";
+        recognizedText = "";
+        StateHasChanged();
+
+        try
+        {
+            await foreach (var result in SpeechToText.ContinuousRecognize(cancellationToken: listenCts.Token))
+            {
+                recognizedText = result.Text;
+                if (result.IsFinal)
+                {
+                    statusText = $"Final (confidence: {result.Confidence:P0})";
+                    break;
+                }
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            statusText = "Cancelled.";
+        }
+        catch (Exception ex)
+        {
+            statusText = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isListening = false;
+            if (statusText == "Listening...")
+                statusText = "Done listening.";
+            StateHasChanged();
+        }
+    }
+
+    void StopListening()
+    {
+        listenCts?.Cancel();
+    }
+
+    async Task LoadVoicesAsync()
+    {
+        voices = await TextToSpeech.GetVoicesAsync();
+        StateHasChanged();
+    }
+}

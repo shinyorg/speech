@@ -16,6 +16,9 @@ public static class SpeechServiceCollectionExtensions
     {
 #if PLATFORM
         services.TryAddSingleton<ISpeechToTextService, SpeechToTextImpl>();
+#else
+        if (OperatingSystem.IsBrowser())
+            services.TryAddSingleton<ISpeechToTextService, BrowserSpeechToTextService>();
 #endif
         return services;
     }
@@ -24,6 +27,9 @@ public static class SpeechServiceCollectionExtensions
     {
 #if PLATFORM
         services.TryAddSingleton<ITextToSpeechService, TextToSpeechImpl>();
+#else
+        if (OperatingSystem.IsBrowser())
+            services.TryAddSingleton<ITextToSpeechService, BrowserTextToSpeechService>();
 #endif
         return services;
     }
@@ -36,6 +42,9 @@ public static class SpeechServiceCollectionExtensions
         services.TryAddTransient<IAudioSource, AndroidAudioSource>();
 #elif WINDOWS
         services.TryAddTransient<IAudioSource, WindowsAudioSource>();
+#else
+        if (OperatingSystem.IsBrowser())
+            services.TryAddTransient<IAudioSource, BrowserAudioSource>();
 #endif
         return services;
     }
@@ -48,6 +57,9 @@ public static class SpeechServiceCollectionExtensions
         services.TryAddSingleton<IAudioPlayer, AndroidAudioPlayer>();
 #elif WINDOWS
         services.TryAddSingleton<IAudioPlayer, WindowsAudioPlayer>();
+#else
+        if (OperatingSystem.IsBrowser())
+            services.TryAddSingleton<IAudioPlayer, BrowserAudioPlayer>();
 #endif
         return services;
     }

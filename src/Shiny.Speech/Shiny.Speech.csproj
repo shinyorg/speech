@@ -44,4 +44,12 @@
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
         <Compile Include="Platforms\Windows\**\*.cs" />
     </ItemGroup>
+
+    <!-- Browser (WebAssembly) — included in the base TFM, guarded at runtime via OperatingSystem.IsBrowser() -->
+    <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == ''">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == ''">
+        <Compile Include="Platforms\Browser\**\*.cs" />
+    </ItemGroup>
 </Project>
