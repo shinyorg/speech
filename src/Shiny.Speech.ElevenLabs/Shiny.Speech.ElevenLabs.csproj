@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFrameworks>$(BaseTargetFramework)</TargetFrameworks>
+        <RootNamespace>Shiny.Speech.ElevenLabs</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.Speech.Cloud\Shiny.Speech.Cloud.csproj" />
+    </ItemGroup>
+</Project>

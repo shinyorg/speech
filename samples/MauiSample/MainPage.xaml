@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:MauiSample"
+             x:Class="MauiSample.MainPage"
+             x:DataType="local:MainViewModel"
+             Title="Speech Sample">
+    <ScrollView Padding="20">
+        <VerticalStackLayout Spacing="15">
+
+            <Label Text="Text-to-Speech"
+                   FontSize="20"
+                   FontAttributes="Bold"/>
+
+            <Entry Text="{Binding TextToSpeak}"
+                   Placeholder="Enter text to speak..."/>
+
+            <HorizontalStackLayout Spacing="10">
+                <Button Text="Speak"
+                        Command="{Binding SpeakCommand}"/>
+                <Button Text="Stop"
+                        Command="{Binding StopSpeakingCommand}"/>
+            </HorizontalStackLayout>
+
+            <BoxView HeightRequest="1" Color="Gray" Margin="0,10"/>
+
+            <Label Text="Speech-to-Text"
+                   FontSize="20"
+                   FontAttributes="Bold"/>
+
+            <Button Text="Listen"
+                    Command="{Binding ListenCommand}"/>
+
+            <Label Text="{Binding RecognizedText}"
+                   FontSize="16"/>
+
+            <Label Text="{Binding StatusText}"
+                   FontSize="12"
+                   TextColor="Gray"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
