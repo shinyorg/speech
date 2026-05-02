@@ -2,9 +2,11 @@ namespace MauiSample;
 
 public partial class App : Application
 {
-    public App(IServiceProvider services)
+    public App()
     {
         InitializeComponent();
-        MainPage = new NavigationPage(services.GetRequiredService<MainPage>());
     }
+
+    protected override Window CreateWindow(IActivationState? activationState)
+        => new Window(new AppShell());
 }

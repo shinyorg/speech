@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:MauiSample"
+             x:Class="MauiSample.TextToSpeechPage"
+             x:DataType="local:TextToSpeechViewModel"
+             Title="Text to Speech">
+    <ScrollView Padding="20">
+        <VerticalStackLayout Spacing="15">
+
+            <!-- Status -->
+            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                   Padding="15"
+                   CornerRadius="8">
+                <Label Text="{Binding StatusText}"
+                       FontSize="14"
+                       TextColor="{StaticResource Primary}" />
+            </Frame>
+
+            <!-- Text Input -->
+            <Label Text="Text to speak"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <Editor Text="{Binding TextToSpeak}"
+                    Placeholder="Enter text to speak..."
+                    HeightRequest="120"
+                    FontSize="16" />
+
+            <!-- Language Filter -->
+            <Label Text="Language Filter"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <Picker ItemsSource="{Binding AvailableLocales}"
+                    ItemDisplayBinding="{Binding DisplayName}"
+                    SelectedItem="{Binding SelectedLocale}" />
+
+            <!-- Voice Picker -->
+            <Label Text="{Binding VoiceCountText}"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <Picker ItemsSource="{Binding Voices}"
+                    ItemDisplayBinding="{Binding Name}"
+                    SelectedItem="{Binding SelectedVoice}" />
+
+            <!-- Rate / Pitch / Volume -->
+            <Label Text="{Binding RateText}" FontSize="12" TextColor="Gray" />
+            <Slider Minimum="0.1" Maximum="3.0" Value="{Binding SpeechRate}" />
+
+            <Label Text="{Binding PitchText}" FontSize="12" TextColor="Gray" />
+            <Slider Minimum="0.5" Maximum="2.0" Value="{Binding Pitch}" />
+
+            <Label Text="{Binding VolumeText}" FontSize="12" TextColor="Gray" />
+            <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Volume}" />
+
+            <!-- Controls -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Text="Speak"
+                        Command="{Binding SpeakCommand}" />
+                <Button Grid.Column="1"
+                        Text="Stop"
+                        Command="{Binding StopCommand}"
+                        BackgroundColor="{StaticResource Gray500}" />
+            </Grid>
+
+            <!-- Refresh Voices -->
+            <Button Text="Refresh Voices"
+                    Command="{Binding LoadVoicesCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{StaticResource Primary}"
+                    FontSize="12" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -28,8 +28,10 @@ public static class MauiProgram
         // builder.Services.AddAudioPlayer();
         // builder.Services.AddElevenLabsTextToSpeech("your-api-key");
 
-        builder.Services.AddTransient<MainPage>();
-        builder.Services.AddTransient<MainViewModel>();
+        builder.Services.AddTransient<SpeechToTextPage>();
+        builder.Services.AddTransient<SpeechToTextViewModel>();
+        builder.Services.AddTransient<TextToSpeechPage>();
+        builder.Services.AddTransient<TextToSpeechViewModel>();
 
 #if DEBUG
         builder.Logging.AddDebug();

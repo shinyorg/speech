@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:MauiSample"
+             x:Class="MauiSample.SpeechToTextPage"
+             x:DataType="local:SpeechToTextViewModel"
+             Title="Speech to Text">
+    <ScrollView Padding="20">
+        <VerticalStackLayout Spacing="15">
+
+            <!-- Status -->
+            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                   Padding="15"
+                   CornerRadius="8">
+                <VerticalStackLayout Spacing="5">
+                    <Label Text="{Binding StatusText}"
+                           FontSize="14"
+                           TextColor="{StaticResource Primary}" />
+                    <Label Text="{Binding ConfidenceText}"
+                           FontSize="12"
+                           TextColor="Gray"
+                           IsVisible="{Binding HasConfidence}" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Mode Toggle -->
+            <Label Text="Mode"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Text="Continuous"
+                        Command="{Binding SetContinuousModeCommand}"
+                        BackgroundColor="{Binding ContinuousButtonColor}" />
+                <Button Grid.Column="1"
+                        Text="Until Silence"
+                        Command="{Binding SetUntilSilenceModeCommand}"
+                        BackgroundColor="{Binding UntilSilenceButtonColor}" />
+            </Grid>
+
+            <!-- Language Picker -->
+            <Label Text="Language"
+                   FontSize="12"
+                   TextColor="Gray" />
+            <Picker ItemsSource="{Binding AvailableLocales}"
+                    ItemDisplayBinding="{Binding DisplayName}"
+                    SelectedItem="{Binding SelectedLocale}" />
+
+            <!-- Options -->
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                <Label Text="Prefer On-Device"
+                       VerticalOptions="Center" />
+                <Switch Grid.Column="1"
+                        IsToggled="{Binding PreferOnDevice}" />
+
+                <Label Grid.Row="1"
+                       Text="{Binding SilenceTimeoutText}"
+                       VerticalOptions="Center" />
+                <Stepper Grid.Row="1" Grid.Column="1"
+                         Minimum="1" Maximum="10" Increment="1"
+                         Value="{Binding SilenceTimeoutSeconds}" />
+            </Grid>
+
+            <!-- Controls -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Text="{Binding ListenButtonText}"
+                        Command="{Binding ToggleListenCommand}" />
+                <Button Grid.Column="1"
+                        Text="Clear"
+                        Command="{Binding ClearCommand}"
+                        BackgroundColor="{StaticResource Gray500}" />
+            </Grid>
+
+            <!-- Recognized Text -->
+            <Label Text="Recognized Text"
+                   FontSize="12"
+                   TextColor="Gray"
+                   Margin="0,10,0,0" />
+            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                   Padding="15"
+                   CornerRadius="8"
+                   MinimumHeightRequest="200">
+                <Label Text="{Binding RecognizedText}"
+                       FontSize="16"
+                       LineBreakMode="WordWrap" />
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

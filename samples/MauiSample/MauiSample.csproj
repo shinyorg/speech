@@ -17,6 +17,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <MauiIcon Include="Resources\AppIcon\appicon.png" ForegroundFile="Resources\AppIcon\appiconfg.png"/>
+        <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#0B0E17" BaseSize="200,200"/>
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
     </ItemGroup>

@@ -15,15 +15,21 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
     public Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {
         var voices = AVSpeechSynthesisVoice.GetSpeechVoices();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var results = new List<VoiceInfo>();
 
         foreach (var voice in voices)
         {
             var voiceCulture = new CultureInfo(voice.Language);
-            if (culture == null || voiceCulture.TwoLetterISOLanguageName == culture.TwoLetterISOLanguageName)
-            {
-                results.Add(new VoiceInfo(voice.Identifier, voice.Name, voiceCulture));
-            }
+            if (culture != null && !voiceCulture.Name.StartsWith(culture.TwoLetterISOLanguageName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Deduplicate by name + language (Apple returns multiple quality variants per voice)
+            var key = $"{voice.Name}|{voice.Language}";
+            if (!seen.Add(key))
+                continue;
+
+            results.Add(new VoiceInfo(voice.Identifier, voice.Name, voiceCulture));
         }
 
         return Task.FromResult<IReadOnlyList<VoiceInfo>>(results);
@@ -73,6 +79,11 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
         try
         {
+            // Ensure audio session is set for playback (STT may have left it on Record)
+            var audioSession = AVAudioSession.SharedInstance();
+            audioSession.SetCategory(AVAudioSessionCategory.Playback, (AVAudioSessionCategoryOptions)0, out _);
+            audioSession.SetActive(true, out _);
+
             synthesizer.SpeakUtterance(utterance);
             logger.LogDebug("Text-to-speech started");
             await tcs.Task;

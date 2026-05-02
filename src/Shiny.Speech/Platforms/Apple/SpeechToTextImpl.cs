@@ -81,9 +81,10 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
         void ResetSilenceTimer()
         {
-            silenceTimer?.Cancel();
-            silenceTimer?.Dispose();
+            var old = silenceTimer;
             silenceTimer = new CancellationTokenSource();
+            try { old?.Cancel(); } catch (ObjectDisposedException) { }
+            old?.Dispose();
             var token = silenceTimer.Token;
             _ = Task.Delay(silenceTimeout, token).ContinueWith(_ =>
             {
@@ -97,7 +98,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         try
         {
             var audioSession = AVAudioSession.SharedInstance();
-            audioSession.SetCategory(AVAudioSessionCategory.Record, AVAudioSessionCategoryOptions.DefaultToSpeaker, out var categoryError);
+            audioSession.SetCategory(AVAudioSessionCategory.Record, (AVAudioSessionCategoryOptions)0, out var categoryError);
             if (categoryError != null)
                 throw new InvalidOperationException($"Failed to set audio session category: {categoryError.LocalizedDescription}");
 
@@ -112,8 +113,17 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             {
                 if (error != null)
                 {
-                    logger.LogError("Speech recognition error: {Error}", error.LocalizedDescription);
-                    channel.Writer.TryComplete(new InvalidOperationException(error.LocalizedDescription));
+                    // "No speech detected" and "retry" are normal end-of-recognition conditions, not fatal errors
+                    if (error.Code == 203 || error.Code == 216 || error.Code == 1110)
+                    {
+                        logger.LogDebug("Speech recognition ended: {Error}", error.LocalizedDescription);
+                        channel.Writer.TryComplete();
+                    }
+                    else
+                    {
+                        logger.LogError("Speech recognition error: {Error}", error.LocalizedDescription);
+                        channel.Writer.TryComplete(new InvalidOperationException(error.LocalizedDescription));
+                    }
                     return;
                 }
 
