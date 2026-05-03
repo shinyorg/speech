@@ -26,8 +26,15 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         if (!IsRecognitionSupported())
             return AccessState.NotSupported;
 
-        var granted = await RequestMicrophoneAccess();
-        return granted ? AccessState.Available : AccessState.Denied;
+        var result = await RequestMicrophoneAccess();
+        return result switch
+        {
+            "available" => AccessState.Available,
+            "denied" => AccessState.Denied,
+            "not-supported" => AccessState.NotSupported,
+            "network" => AccessState.Restricted,
+            _ => AccessState.Unknown
+        };
     }
 
     public async IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(
@@ -120,7 +127,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
     private static partial bool IsRecognitionSupported();
 
     [JSImport("shinySpeech.requestMicrophoneAccess", "shiny-speech")]
-    private static partial Task<bool> RequestMicrophoneAccess();
+    private static partial Task<string> RequestMicrophoneAccess();
 
     [JSImport("shinySpeech.startRecognition", "shiny-speech")]
     private static partial Task StartRecognitionAsync(string lang, bool continuous);

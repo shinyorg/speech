@@ -15,15 +15,61 @@ export const shinySpeech = {
     },
 
     async requestMicrophoneAccess() {
+        // 1. Request microphone permission
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            // Stop the tracks immediately — we just needed the permission grant
             stream.getTracks().forEach(t => t.stop());
-            return true;
         } catch (e) {
             console.warn('[Shiny.Speech] Microphone access denied:', e.message);
-            return false;
+            return "denied";
         }
+
+        // 2. Test that the speech recognition service is reachable
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) return "not-supported";
+
+        return new Promise((resolve) => {
+            const testRecognition = new SpeechRecognition();
+            testRecognition.continuous = false;
+            testRecognition.interimResults = false;
+
+            const timeout = setTimeout(() => {
+                // If we got this far without error, the service is reachable
+                testRecognition.abort();
+                resolve("available");
+            }, 2000);
+
+            testRecognition.onerror = (event) => {
+                clearTimeout(timeout);
+                console.warn('[Shiny.Speech] Service test error:', event.error);
+                if (event.error === 'not-allowed') {
+                    resolve("denied");
+                } else if (event.error === 'network') {
+                    resolve("network");
+                } else if (event.error === 'service-not-allowed') {
+                    resolve("not-supported");
+                } else if (event.error === 'no-speech' || event.error === 'aborted') {
+                    // These are fine — means the service connected
+                    resolve("available");
+                } else {
+                    resolve("error:" + event.error);
+                }
+            };
+
+            testRecognition.onstart = () => {
+                // Service connected successfully, no need to wait
+                clearTimeout(timeout);
+                testRecognition.abort();
+                resolve("available");
+            };
+
+            try {
+                testRecognition.start();
+            } catch (e) {
+                clearTimeout(timeout);
+                resolve("error:" + e.message);
+            }
+        });
     },
 
     async startRecognition(lang, continuous) {
@@ -34,6 +80,8 @@ export const shinySpeech = {
         }
 
         recognitionStopped = false;
+        let consecutiveErrors = 0;
+        const maxRetries = 3;
 
         function createAndStart() {
             if (recognitionStopped) return;
@@ -44,6 +92,7 @@ export const shinySpeech = {
             if (lang) recognition.lang = lang;
 
             recognition.onresult = (event) => {
+                consecutiveErrors = 0; // reset on successful result
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const result = event.results[i];
                     const text = result[0].transcript;
@@ -76,8 +125,17 @@ export const shinySpeech = {
             recognition.onerror = (event) => {
                 console.warn('[Shiny.Speech] Recognition error:', event.error);
                 if (event.error === 'no-speech' || event.error === 'aborted') {
-                    // Non-fatal: onend will fire and handle restart/end
+                    // Harmless: onend will fire and handle restart/end
                     return;
+                }
+                if (event.error === 'network') {
+                    consecutiveErrors++;
+                    if (consecutiveErrors <= maxRetries) {
+                        console.warn(`[Shiny.Speech] Network error, retry ${consecutiveErrors}/${maxRetries}`);
+                        return; // onend will restart
+                    }
+                    // Fall through to fatal after max retries
+                    console.error('[Shiny.Speech] Network error persisted after retries');
                 }
                 // Fatal errors
                 recognitionStopped = true;
