@@ -18,21 +18,24 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         this.logger = logger;
     }
 
-    public bool IsSupported => IsRecognitionSupported();
+    public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
 
-    public Task<AccessState> RequestAccess()
+    public async Task<AccessState> RequestAccess()
     {
-        if (!IsSupported)
-            return Task.FromResult(AccessState.NotSupported);
+        await BrowserJsModule.ImportAsync();
+        if (!IsRecognitionSupported())
+            return AccessState.NotSupported;
 
-        return Task.FromResult(AccessState.Available);
+        var granted = await RequestMicrophoneAccess();
+        return granted ? AccessState.Available : AccessState.Denied;
     }
 
     public async IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(
         SpeechRecognitionOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!IsSupported)
+        await BrowserJsModule.ImportAsync();
+        if (!IsRecognitionSupported())
             yield break;
 
         options ??= new SpeechRecognitionOptions();
@@ -46,7 +49,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
 
         try
         {
-            StartRecognition(lang, true);
+            await StartRecognitionAsync(lang, true);
             logger.LogDebug("Browser speech recognition started (continuous)");
 
             using var reg = cancellationToken.Register(() =>
@@ -72,7 +75,8 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         SpeechRecognitionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (!IsSupported)
+        await BrowserJsModule.ImportAsync();
+        if (!IsRecognitionSupported())
             return null;
 
         options ??= new SpeechRecognitionOptions();
@@ -86,7 +90,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
 
         try
         {
-            StartRecognition(lang, false);
+            await StartRecognitionAsync(lang, false);
             logger.LogDebug("Browser speech recognition started (single)");
 
             using var reg = cancellationToken.Register(() =>
@@ -115,8 +119,11 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
     [JSImport("shinySpeech.isRecognitionSupported", "shiny-speech")]
     private static partial bool IsRecognitionSupported();
 
+    [JSImport("shinySpeech.requestMicrophoneAccess", "shiny-speech")]
+    private static partial Task<bool> RequestMicrophoneAccess();
+
     [JSImport("shinySpeech.startRecognition", "shiny-speech")]
-    private static partial void StartRecognition(string lang, bool continuous);
+    private static partial Task StartRecognitionAsync(string lang, bool continuous);
 
     [JSImport("shinySpeech.stopRecognition", "shiny-speech")]
     private static partial void StopRecognition();
@@ -136,6 +143,6 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
     [JSExport]
     public static void OnError(string error)
     {
-        activeChannel?.Writer.TryComplete();
+        activeChannel?.Writer.TryComplete(new InvalidOperationException($"Speech recognition error: {error}"));
     }
 }

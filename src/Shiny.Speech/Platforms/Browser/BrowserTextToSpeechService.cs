@@ -17,11 +17,13 @@ public partial class BrowserTextToSpeechService : ITextToSpeechService
         this.logger = logger;
     }
 
-    public bool IsSupported => IsSynthesisSupported();
-    public bool IsSpeaking => GetIsSpeaking();
+    public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsSynthesisSupported();
+    public bool IsSpeaking => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsSpeaking();
 
-    public Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {
+        await BrowserJsModule.ImportAsync();
+
         var voicesJson = GetVoicesJson(culture?.Name ?? "");
         var results = new List<VoiceInfo>();
 
@@ -46,13 +48,14 @@ public partial class BrowserTextToSpeechService : ITextToSpeechService
             }
         }
 
-        return Task.FromResult<IReadOnlyList<VoiceInfo>>(results);
+        return results;
     }
 
-    public Task SpeakAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
+    public async Task SpeakAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
     {
-        if (!IsSupported)
-            return Task.CompletedTask;
+        await BrowserJsModule.ImportAsync();
+        if (!IsSynthesisSupported())
+            return;
 
         activeSpeakTcs?.TrySetResult();
         activeSpeakTcs = new TaskCompletionSource();
@@ -70,7 +73,7 @@ public partial class BrowserTextToSpeechService : ITextToSpeechService
             activeSpeakTcs?.TrySetResult();
         });
 
-        return activeSpeakTcs.Task;
+        await activeSpeakTcs.Task;
     }
 
     public Task StopAsync()

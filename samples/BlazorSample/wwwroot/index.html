@@ -5,16 +5,270 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shiny Speech - Blazor Sample</title>
     <base href="/" />
+    <style>
+        :root {
+            --primary: #9A81EA;
+            --primary-dark: #B8A4F0;
+            --bg: #0B0E17;
+            --surface: #161B2E;
+            --surface-border: #2A3050;
+            --text: #E8E0FF;
+            --text-muted: #8888AA;
+            --success: #91F5AD;
+            --danger: #FF6B6B;
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .page { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+        .app-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .app-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .app-header p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 4px;
+            margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            background: var(--primary);
+            color: white;
+        }
+        .tab:hover:not(.active) { color: var(--text); }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--surface-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .status-dot.active { background: var(--success); animation: pulse 1.5s infinite; }
+        .status-dot.error { background: var(--danger); }
+        .status-text { font-size: 14px; font-weight: 500; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .mode-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            width: 100%;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover:not(:disabled) { opacity: 0.85; }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--surface-border);
+        }
+        .btn-ghost:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text); }
+
+        .btn-row { display: flex; gap: 10px; }
+        .btn-row .btn { flex: 1; }
+
+        .text-output {
+            background: var(--bg);
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 120px;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .text-output.empty { color: var(--text-muted); font-style: italic; }
+
+        .confidence {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        textarea, input[type="text"], select {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg);
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        textarea:focus, input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        select {
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .field { margin-bottom: 12px; }
+        .field-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .slider-row input[type="range"] {
+            flex: 1;
+            accent-color: var(--primary);
+        }
+        .slider-value {
+            font-size: 13px;
+            color: var(--text-muted);
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .voice-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+        }
+        .voice-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--surface-border);
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .voice-item:last-child { border-bottom: none; }
+        .voice-item:hover { background: rgba(154, 129, 234, 0.1); }
+        .voice-item.selected { background: rgba(154, 129, 234, 0.2); }
+        .voice-name { font-weight: 500; }
+        .voice-lang { color: var(--text-muted); font-size: 12px; margin-left: 8px; }
+
+        .divider {
+            height: 1px;
+            background: var(--surface-border);
+            margin: 12px 0;
+        }
+
+        .hidden { display: none; }
+
+        #blazor-error-ui {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            padding: 12px;
+            background: var(--danger);
+            color: white;
+            text-align: center;
+            z-index: 1000;
+        }
+    </style>
 </head>
 <body>
-    <div id="app">Loading...</div>
+    <div id="app">
+        <div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8888AA;">
+            Loading...
+        </div>
+    </div>
 
-    <div id="blazor-error-ui" style="display:none">
+    <div id="blazor-error-ui">
         An unhandled error has occurred.
-        <a href="">Reload</a>
+        <a href="" style="color:white;text-decoration:underline;">Reload</a>
     </div>
 
     <script src="_framework/blazor.webassembly.js"></script>
-    <script src="shiny-speech.js"></script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Windows.Media;
 using Windows.Media.Audio;
@@ -29,7 +30,8 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
 
         audioGraph = graphResult.Graph;
 
-        var inputResult = await audioGraph.CreateDeviceInputNodeAsync(MediaCategory.Speech, encoding);
+        var inputResult = await audioGraph.CreateDeviceInputNodeAsync(
+            Windows.Media.Capture.MediaCategory.Speech, encoding);
         if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
             throw new InvalidOperationException($"Failed to create input node: {inputResult.Status}");
 
@@ -56,11 +58,13 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         using var reference = buffer.CreateReference();
         unsafe
         {
-            ((Windows.Foundation.IMemoryBufferByteAccess)reference).GetBuffer(out var dataPtr, out var capacity);
-            if (capacity > 0)
+            byte* dataPtr = null;
+            uint capacity = 0;
+            ((IMemoryBufferByteAccess)reference).GetBuffer(&dataPtr, &capacity);
+            if (capacity > 0 && dataPtr != null)
             {
                 var data = new byte[capacity];
-                System.Runtime.InteropServices.Marshal.Copy((IntPtr)dataPtr, data, 0, (int)capacity);
+                Marshal.Copy((IntPtr)dataPtr, data, 0, (int)capacity);
                 try
                 {
                     pipe?.Write(data, 0, data.Length);
@@ -93,5 +97,13 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
     {
         await StopCaptureAsync();
         GC.SuppressFinalize(this);
+    }
+
+    [ComImport]
+    [Guid("5B0D3235-4DBA-4D44-865E-8F1D0E4FD04D")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    unsafe interface IMemoryBufferByteAccess
+    {
+        void GetBuffer(byte** buffer, uint* capacity);
     }
 }

@@ -1,49 +1,315 @@
 @page "/"
+@using System.Globalization
 @using Shiny.Speech
 @inject ISpeechToTextService SpeechToText
 @inject ITextToSpeechService TextToSpeech
 
-<h1>Shiny Speech - Blazor WASM</h1>
-
-<h2>Text-to-Speech</h2>
-<div>
-    <input @bind="textToSpeak" placeholder="Enter text to speak..." style="width:300px" />
-    <button @onclick="SpeakAsync" disabled="@isSpeaking">Speak</button>
-    <button @onclick="StopSpeakingAsync" disabled="@(!isSpeaking)">Stop</button>
+<!-- Tab Navigation -->
+<div class="tabs">
+    <button class="tab @(activeTab == 0 ? "active" : "")" @onclick="() => activeTab = 0">Speech to Text</button>
+    <button class="tab @(activeTab == 1 ? "active" : "")" @onclick="() => activeTab = 1">Text to Speech</button>
 </div>
 
-<hr />
-
-<h2>Speech-to-Text</h2>
-<div>
-    <button @onclick="ListenAsync" disabled="@isListening">Listen</button>
-    <button @onclick="StopListening" disabled="@(!isListening)">Stop</button>
-</div>
-<p><strong>@recognizedText</strong></p>
-<p style="color:gray">@statusText</p>
-
-<hr />
-
-<h2>Voices</h2>
-<button @onclick="LoadVoicesAsync">Load Voices</button>
-@if (voices != null)
+@if (activeTab == 0)
 {
-    <ul>
-        @foreach (var voice in voices)
+    <!-- ==================== SPEECH TO TEXT ==================== -->
+
+    <!-- Status -->
+    <div class="card">
+        <div class="status-bar">
+            <div class="status-dot @(isListening ? "active" : "")"></div>
+            <span class="status-text">@sttStatus</span>
+        </div>
+        @if (sttConfidence != null)
         {
-            <li>@voice.Name (@voice.Culture.Name)</li>
+            <div class="confidence">Confidence: @(sttConfidence.Value.ToString("P0"))</div>
         }
-    </ul>
+    </div>
+
+    <!-- Mode -->
+    <div class="card">
+        <div class="card-label">Mode</div>
+        <div class="mode-toggle">
+            <button class="mode-btn @(isContinuousMode ? "active" : "")"
+                    @onclick="() => isContinuousMode = true"
+                    disabled="@isListening">
+                Continuous
+            </button>
+            <button class="mode-btn @(!isContinuousMode ? "active" : "")"
+                    @onclick="() => isContinuousMode = false"
+                    disabled="@isListening">
+                Until Silence
+            </button>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="btn-row" style="margin-bottom:16px">
+        @if (isListening)
+        {
+            <button class="btn btn-danger" @onclick="StopListening">Stop Listening</button>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="StartListeningAsync">Start Listening</button>
+        }
+        <button class="btn btn-ghost" @onclick="ClearStt" style="flex:0 0 80px">Clear</button>
+    </div>
+
+    <!-- Recognized Text -->
+    <div class="card">
+        <div class="card-label">Recognized Text</div>
+        <div class="text-output @(string.IsNullOrEmpty(recognizedText) ? "empty" : "")">@(string.IsNullOrEmpty(recognizedText) ? "Tap \"Start Listening\" to begin..." : recognizedText)</div>
+    </div>
+}
+else
+{
+    <!-- ==================== TEXT TO SPEECH ==================== -->
+
+    <!-- Status -->
+    <div class="card">
+        <div class="status-bar">
+            <div class="status-dot @(isSpeaking ? "active" : "")"></div>
+            <span class="status-text">@ttsStatus</span>
+        </div>
+    </div>
+
+    <!-- Text Input -->
+    <div class="card">
+        <div class="card-label">Text to Speak</div>
+        <textarea rows="4" @bind="textToSpeak" placeholder="Enter text to speak..."></textarea>
+    </div>
+
+    <!-- Voice Settings -->
+    <div class="card">
+        <div class="card-label">Voice Settings</div>
+
+        <div class="field">
+            <div class="field-label">Language</div>
+            <select @bind="selectedLocale" @bind:after="OnLocaleChangedAsync">
+                @foreach (var locale in availableLocales)
+                {
+                    <option value="@locale.Name">@locale.DisplayName</option>
+                }
+            </select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+            <div class="field-label">Voice (@(voices?.Count ?? 0) available)</div>
+            @if (voices != null && voices.Count > 0)
+            {
+                <div class="voice-list">
+                    @foreach (var voice in voices)
+                    {
+                        <div class="voice-item @(selectedVoice?.Id == voice.Id ? "selected" : "")"
+                             @onclick="() => selectedVoice = voice">
+                            <span class="voice-name">@voice.Name</span>
+                            <span class="voice-lang">@voice.Culture.Name</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div style="color:var(--text-muted);font-size:13px;padding:8px 0">
+                    No voices loaded.
+                    <a href="javascript:void(0)" @onclick="LoadVoicesAsync" style="color:var(--primary)">Load voices</a>
+                </div>
+            }
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+            <div class="field-label">Rate</div>
+            <div class="slider-row">
+                <input type="range" min="0.1" max="3.0" step="0.1" @bind="speechRate" @bind:event="oninput" />
+                <span class="slider-value">@speechRate.ToString("0.0")x</span>
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="field-label">Pitch</div>
+            <div class="slider-row">
+                <input type="range" min="0.5" max="2.0" step="0.1" @bind="pitch" @bind:event="oninput" />
+                <span class="slider-value">@pitch.ToString("0.0")</span>
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="field-label">Volume</div>
+            <div class="slider-row">
+                <input type="range" min="0" max="1.0" step="0.1" @bind="volume" @bind:event="oninput" />
+                <span class="slider-value">@volume.ToString("P0")</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="btn-row">
+        <button class="btn btn-primary" @onclick="SpeakAsync" disabled="@(isSpeaking || string.IsNullOrWhiteSpace(textToSpeak))">Speak</button>
+        <button class="btn btn-danger" @onclick="StopSpeakingAsync" disabled="@(!isSpeaking)" style="flex:0 0 100px">Stop</button>
+    </div>
 }
 
 @code {
-    string textToSpeak = "Hello! I am the Shiny Speech library running in Blazor WebAssembly.";
-    string? recognizedText;
-    string? statusText;
-    bool isSpeaking;
+    // --- Shared ---
+    int activeTab = 0;
+
+    // --- STT State ---
     bool isListening;
-    IReadOnlyList<VoiceInfo>? voices;
+    bool isContinuousMode = true;
+    string sttStatus = "Ready";
+    float? sttConfidence;
+    string? recognizedText;
     CancellationTokenSource? listenCts;
+
+    // --- TTS State ---
+    bool isSpeaking;
+    string ttsStatus = "Ready";
+    string textToSpeak = "Hello! I am the Shiny Speech library running in Blazor WebAssembly.";
+    List<CultureInfo> availableLocales = new();
+    string selectedLocale = "";
+    IReadOnlyList<VoiceInfo>? voices;
+    VoiceInfo? selectedVoice;
+    float speechRate = 1.0f;
+    float pitch = 1.0f;
+    float volume = 1.0f;
+
+    protected override async Task OnInitializedAsync()
+    {
+        availableLocales = CultureInfo
+            .GetCultures(CultureTypes.SpecificCultures)
+            .OrderBy(c => c.DisplayName)
+            .ToList();
+
+        selectedLocale = CultureInfo.CurrentCulture.Name;
+        if (!availableLocales.Any(c => c.Name == selectedLocale))
+            selectedLocale = availableLocales.First().Name;
+
+        await LoadVoicesAsync();
+    }
+
+    // ==================== STT ====================
+
+    async Task StartListeningAsync()
+    {
+        var access = await SpeechToText.RequestAccess();
+        if (access != AccessState.Available)
+        {
+            sttStatus = $"Access: {access}";
+            return;
+        }
+
+        listenCts?.Cancel();
+        listenCts = new CancellationTokenSource();
+        isListening = true;
+        recognizedText = "";
+        sttConfidence = null;
+        StateHasChanged();
+
+        try
+        {
+            if (isContinuousMode)
+                await ListenContinuousAsync(listenCts.Token);
+            else
+                await ListenUntilSilenceAsync(listenCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            sttStatus = "Stopped";
+        }
+        catch (Exception ex)
+        {
+            sttStatus = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isListening = false;
+            if (sttStatus.StartsWith("Listening"))
+                sttStatus = "Done";
+            StateHasChanged();
+        }
+    }
+
+    async Task ListenContinuousAsync(CancellationToken ct)
+    {
+        sttStatus = "Listening (continuous)...";
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = new CultureInfo(selectedLocale)
+        };
+
+        var accumulated = "";
+
+        await foreach (var result in SpeechToText.ContinuousRecognize(options, ct))
+        {
+            if (result.IsFinal)
+            {
+                if (accumulated.Length > 0)
+                    accumulated += " ";
+                accumulated += result.Text;
+                recognizedText = accumulated;
+            }
+            else
+            {
+                recognizedText = accumulated.Length > 0
+                    ? accumulated + " " + result.Text
+                    : result.Text;
+            }
+
+            if (result.Confidence.HasValue)
+                sttConfidence = result.Confidence;
+
+            sttStatus = result.IsFinal
+                ? "Listening (continuous) -- final segment received"
+                : "Listening (continuous) -- partial...";
+
+            StateHasChanged();
+        }
+
+        sttStatus = "Continuous listening ended";
+    }
+
+    async Task ListenUntilSilenceAsync(CancellationToken ct)
+    {
+        sttStatus = "Listening (until silence)...";
+        StateHasChanged();
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = new CultureInfo(selectedLocale)
+        };
+
+        var text = await SpeechToText.ListenUntilSilence(options, ct);
+
+        if (text != null)
+        {
+            recognizedText = text;
+            sttStatus = "Silence detected -- done";
+        }
+        else
+        {
+            sttStatus = "No speech detected";
+        }
+    }
+
+    void StopListening()
+    {
+        listenCts?.Cancel();
+    }
+
+    void ClearStt()
+    {
+        recognizedText = "";
+        sttConfidence = null;
+        sttStatus = "Ready";
+    }
+
+    // ==================== TTS ====================
 
     async Task SpeakAsync()
     {
@@ -51,17 +317,26 @@
             return;
 
         isSpeaking = true;
-        statusText = "Speaking...";
+        ttsStatus = "Speaking...";
         StateHasChanged();
 
         try
         {
-            await TextToSpeech.SpeakAsync(textToSpeak);
-            statusText = "Done speaking.";
+            var options = new TextToSpeechOptions
+            {
+                Culture = new CultureInfo(selectedLocale),
+                Voice = selectedVoice,
+                SpeechRate = speechRate,
+                Pitch = pitch,
+                Volume = volume
+            };
+
+            await TextToSpeech.SpeakAsync(textToSpeak, options);
+            ttsStatus = "Done speaking";
         }
         catch (Exception ex)
         {
-            statusText = $"Error: {ex.Message}";
+            ttsStatus = $"Error: {ex.Message}";
         }
         finally
         {
@@ -74,63 +349,25 @@
     {
         await TextToSpeech.StopAsync();
         isSpeaking = false;
-        statusText = "Stopped.";
+        ttsStatus = "Stopped";
     }
 
-    async Task ListenAsync()
+    async Task OnLocaleChangedAsync()
     {
-        var access = await SpeechToText.RequestAccess();
-        if (access != AccessState.Available)
-        {
-            statusText = $"Speech recognition access: {access}";
-            return;
-        }
-
-        listenCts?.Cancel();
-        listenCts = new CancellationTokenSource();
-        isListening = true;
-        statusText = "Listening...";
-        recognizedText = "";
-        StateHasChanged();
-
-        try
-        {
-            await foreach (var result in SpeechToText.ContinuousRecognize(cancellationToken: listenCts.Token))
-            {
-                recognizedText = result.Text;
-                if (result.IsFinal)
-                {
-                    statusText = $"Final (confidence: {result.Confidence:P0})";
-                    break;
-                }
-                StateHasChanged();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            statusText = "Cancelled.";
-        }
-        catch (Exception ex)
-        {
-            statusText = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            isListening = false;
-            if (statusText == "Listening...")
-                statusText = "Done listening.";
-            StateHasChanged();
-        }
-    }
-
-    void StopListening()
-    {
-        listenCts?.Cancel();
+        await LoadVoicesAsync();
     }
 
     async Task LoadVoicesAsync()
     {
-        voices = await TextToSpeech.GetVoicesAsync();
-        StateHasChanged();
+        try
+        {
+            var culture = string.IsNullOrEmpty(selectedLocale) ? null : new CultureInfo(selectedLocale);
+            voices = await TextToSpeech.GetVoicesAsync(culture);
+            selectedVoice = voices.FirstOrDefault();
+        }
+        catch
+        {
+            voices = null;
+        }
     }
 }

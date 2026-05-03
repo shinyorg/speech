@@ -9,10 +9,11 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
 {
     TaskCompletionSource? playTcs;
 
-    public bool IsPlaying => GetIsPlaying();
+    public bool IsPlaying => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsPlaying();
 
-    public Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
+        await BrowserJsModule.ImportAsync();
         playTcs?.TrySetResult();
         playTcs = new TaskCompletionSource();
 
@@ -31,7 +32,7 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
             playTcs?.TrySetResult();
         });
 
-        return playTcs.Task;
+        await playTcs.Task;
     }
 
     public Task StopAsync()
