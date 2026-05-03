@@ -1,4 +1,3 @@
-#if APPLE
 using AVFoundation;
 using Foundation;
 using Microsoft.Extensions.Logging;
@@ -24,9 +23,11 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         if (player == null)
             throw new InvalidOperationException("Failed to create audio player from data");
 
+#if !MACOS
         var session = AVAudioSession.SharedInstance();
         session.SetCategory(AVAudioSessionCategory.Playback, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
         session.SetActive(true, out _);
+#endif
 
         playbackTcs = new TaskCompletionSource();
         player.FinishedPlaying += OnFinishedPlaying;
@@ -70,4 +71,3 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         return ValueTask.CompletedTask;
     }
 }
-#endif

@@ -6,60 +6,99 @@
              x:DataType="local:TextToSpeechViewModel"
              Title="Text to Speech">
     <ScrollView Padding="20">
-        <VerticalStackLayout Spacing="15">
+        <VerticalStackLayout Spacing="16">
 
-            <!-- Status -->
-            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
-                   Padding="15"
-                   CornerRadius="8">
+            <!-- Status Card -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
                 <Label Text="{Binding StatusText}"
-                       FontSize="14"
+                       FontSize="15"
+                       FontFamily="OpenSansSemibold"
                        TextColor="{StaticResource Primary}" />
-            </Frame>
+            </Border>
 
             <!-- Text Input -->
-            <Label Text="Text to speak"
-                   FontSize="12"
-                   TextColor="Gray" />
-            <Editor Text="{Binding TextToSpeak}"
-                    Placeholder="Enter text to speak..."
-                    HeightRequest="120"
-                    FontSize="16" />
+            <Label Text="TEXT TO SPEAK"
+                   FontSize="11"
+                   FontFamily="OpenSansSemibold"
+                   TextColor="{StaticResource Gray400}"
+                   Margin="0,4,0,0" />
+            <Border StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1"
+                    Padding="4">
+                <Editor Text="{Binding TextToSpeak}"
+                        Placeholder="Enter text to speak..."
+                        HeightRequest="120"
+                        FontSize="16" />
+            </Border>
 
-            <!-- Language Filter -->
-            <Label Text="Language Filter"
-                   FontSize="12"
-                   TextColor="Gray" />
-            <Picker ItemsSource="{Binding AvailableLocales}"
-                    ItemDisplayBinding="{Binding DisplayName}"
-                    SelectedItem="{Binding SelectedLocale}" />
+            <!-- Voice Settings Card -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="VOICE SETTINGS"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
 
-            <!-- Voice Picker -->
-            <Label Text="{Binding VoiceCountText}"
-                   FontSize="12"
-                   TextColor="Gray" />
-            <Picker ItemsSource="{Binding Voices}"
-                    ItemDisplayBinding="{Binding Name}"
-                    SelectedItem="{Binding SelectedVoice}" />
+                    <Label Text="Language"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray400}" />
+                    <Picker ItemsSource="{Binding AvailableLocales}"
+                            ItemDisplayBinding="{Binding DisplayName}"
+                            SelectedItem="{Binding SelectedLocale}" />
 
-            <!-- Rate / Pitch / Volume -->
-            <Label Text="{Binding RateText}" FontSize="12" TextColor="Gray" />
-            <Slider Minimum="0.1" Maximum="3.0" Value="{Binding SpeechRate}" />
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
 
-            <Label Text="{Binding PitchText}" FontSize="12" TextColor="Gray" />
-            <Slider Minimum="0.5" Maximum="2.0" Value="{Binding Pitch}" />
+                    <Label Text="{Binding VoiceCountText}"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray400}" />
+                    <Picker ItemsSource="{Binding Voices}"
+                            ItemDisplayBinding="{Binding Name}"
+                            SelectedItem="{Binding SelectedVoice}" />
 
-            <Label Text="{Binding VolumeText}" FontSize="12" TextColor="Gray" />
-            <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Volume}" />
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
+
+                    <Label Text="{Binding RateText}" FontSize="12" TextColor="{StaticResource Gray400}" />
+                    <Slider Minimum="0.1" Maximum="3.0" Value="{Binding SpeechRate}"
+                            MinimumTrackColor="{StaticResource Primary}"
+                            ThumbColor="{StaticResource Primary}" />
+
+                    <Label Text="{Binding PitchText}" FontSize="12" TextColor="{StaticResource Gray400}" />
+                    <Slider Minimum="0.5" Maximum="2.0" Value="{Binding Pitch}"
+                            MinimumTrackColor="{StaticResource Primary}"
+                            ThumbColor="{StaticResource Primary}" />
+
+                    <Label Text="{Binding VolumeText}" FontSize="12" TextColor="{StaticResource Gray400}" />
+                    <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Volume}"
+                            MinimumTrackColor="{StaticResource Primary}"
+                            ThumbColor="{StaticResource Primary}" />
+                </VerticalStackLayout>
+            </Border>
 
             <!-- Controls -->
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                 <Button Text="Speak"
-                        Command="{Binding SpeakCommand}" />
+                        Command="{Binding SpeakCommand}"
+                        CornerRadius="12"
+                        FontSize="16"
+                        HeightRequest="50" />
                 <Button Grid.Column="1"
                         Text="Stop"
                         Command="{Binding StopCommand}"
-                        BackgroundColor="{StaticResource Gray500}" />
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Gray300}, Dark={StaticResource Gray500}}"
+                        CornerRadius="12"
+                        FontSize="16"
+                        HeightRequest="50" />
             </Grid>
 
             <!-- Refresh Voices -->

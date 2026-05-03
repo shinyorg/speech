@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFrameworks>$(BaseTargetFramework)-ios;$(BaseTargetFramework)-android</TargetFrameworks>
+        <TargetFrameworks>$(BaseTargetFramework)-ios;$(BaseTargetFramework)-maccatalyst;$(BaseTargetFramework)-android</TargetFrameworks>
         <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);$(BaseTargetFramework)-windows10.0.19041.0</TargetFrameworks>
         <OutputType>Exe</OutputType>
         <RootNamespace>MauiSample</RootNamespace>
@@ -11,6 +11,7 @@
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
         <ApplicationVersion>1</ApplicationVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.19041.0</SupportedOSPlatformVersion>
         <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.19041.0</TargetPlatformMinVersion>
@@ -19,15 +20,26 @@
     <ItemGroup>
         <MauiIcon Include="Resources\AppIcon\appicon.png" ForegroundFile="Resources\AppIcon\appiconfg.png"/>
         <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#0B0E17" BaseSize="200,200"/>
+        <MauiImage Include="Resources\Images\*" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls" />
+        <PackageReference Include="Shiny.Maui.Shell" />
+        <PackageReference Include="CommunityToolkit.Mvvm" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\Shiny.Speech\Shiny.Speech.csproj" />
+    </ItemGroup>
+
+    <!-- Cloud/Azure/ElevenLabs only target net10.0 (no Android TFM). When included as project references
+         in an Android app, they create duplicate transitive references to Shiny.Speech that confuse the
+         Android build system's ProcessAssemblies task, causing it to set HasMonoAndroidReference=False
+         on Shiny.Speech.dll — which prevents ACW (Android Callable Wrapper) generation for Java.Lang.Object
+         subclasses. Reference these as NuGet packages instead, or only include them on non-Android targets. -->
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
         <ProjectReference Include="..\..\src\Shiny.Speech.Cloud\Shiny.Speech.Cloud.csproj" />
         <ProjectReference Include="..\..\src\Shiny.Speech.Azure\Shiny.Speech.Azure.csproj" />
         <ProjectReference Include="..\..\src\Shiny.Speech.ElevenLabs\Shiny.Speech.ElevenLabs.csproj" />

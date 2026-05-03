@@ -10,6 +10,11 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseShinyShell(cfg =>
+            {
+                cfg.Add<SpeechToTextPage, SpeechToTextViewModel>();
+                cfg.Add<TextToSpeechPage, TextToSpeechViewModel>();
+            })
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -27,11 +32,6 @@ public static class MauiProgram
         // To use ElevenLabs for TTS:
         // builder.Services.AddAudioPlayer();
         // builder.Services.AddElevenLabsTextToSpeech("your-api-key");
-
-        builder.Services.AddTransient<SpeechToTextPage>();
-        builder.Services.AddTransient<SpeechToTextViewModel>();
-        builder.Services.AddTransient<TextToSpeechPage>();
-        builder.Services.AddTransient<TextToSpeechViewModel>();
 
 #if DEBUG
         builder.Logging.AddDebug();

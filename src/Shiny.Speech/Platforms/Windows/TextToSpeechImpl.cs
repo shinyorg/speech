@@ -1,4 +1,3 @@
-#if WINDOWS
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Windows.Media.Core;
@@ -102,4 +101,3 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         synthesizer.Dispose();
     }
 }
-#endif

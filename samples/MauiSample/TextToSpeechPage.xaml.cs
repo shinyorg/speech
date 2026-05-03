@@ -7,11 +7,4 @@ public partial class TextToSpeechPage : ContentPage
         InitializeComponent();
         BindingContext = viewModel;
     }
-
-    protected override void OnAppearing()
-    {
-        base.OnAppearing();
-        if (BindingContext is TextToSpeechViewModel vm)
-            vm.LoadVoicesCommand.Execute(null);
-    }
 }

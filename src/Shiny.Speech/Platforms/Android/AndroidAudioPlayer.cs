@@ -1,4 +1,3 @@
-#if ANDROID
 using Android.Media;
 using Microsoft.Extensions.Logging;
 using Stream = System.IO.Stream;
@@ -87,4 +86,3 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         return ValueTask.CompletedTask;
     }
 }
-#endif

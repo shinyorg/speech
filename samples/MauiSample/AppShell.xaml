@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-       xmlns:local="clr-namespace:MauiSample"
-       x:Class="MauiSample.AppShell"
-       Title="Shiny Speech">
+<shiny:ShinyShell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:shiny="clr-namespace:Shiny;assembly=Shiny.Maui.Shell"
+                  xmlns:local="clr-namespace:MauiSample"
+                  x:Class="MauiSample.AppShell"
+                  Title="Shiny Speech">
 
     <TabBar>
         <ShellContent Title="Speech to Text"
+                      Icon="mic.png"
                       ContentTemplate="{DataTemplate local:SpeechToTextPage}" />
         <ShellContent Title="Text to Speech"
+                      Icon="speaker.png"
                       ContentTemplate="{DataTemplate local:TextToSpeechPage}" />
     </TabBar>
 
-</Shell>
+</shiny:ShinyShell>

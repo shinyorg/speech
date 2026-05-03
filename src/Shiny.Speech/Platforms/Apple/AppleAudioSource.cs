@@ -1,4 +1,3 @@
-#if APPLE
 using AVFoundation;
 using Microsoft.Extensions.Logging;
 
@@ -41,9 +40,11 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
             }
         });
 
+#if !MACOS
         var audioSession = AVAudioSession.SharedInstance();
         audioSession.SetCategory(AVAudioSessionCategory.Record, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
         audioSession.SetActive(true, out _);
+#endif
 
         audioEngine.Prepare();
         audioEngine.StartAndReturnError(out var error);
@@ -64,8 +65,10 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
                 audioEngine.InputNode.RemoveTapOnBus(0);
             }
 
+#if !MACOS
             var session = AVAudioSession.SharedInstance();
             session.SetActive(false, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out _);
+#endif
         }
 
         outputStream?.Dispose();
@@ -79,4 +82,3 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         GC.SuppressFinalize(this);
     }
 }
-#endif

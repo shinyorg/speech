@@ -1,12 +1,11 @@
-using System.ComponentModel;
 using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Windows.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Shiny.Speech;
 
 namespace MauiSample;
 
-public class SpeechToTextViewModel : INotifyPropertyChanged
+public partial class SpeechToTextViewModel : ObservableObject
 {
     readonly ISpeechToTextService stt;
     CancellationTokenSource? listenCts;
@@ -23,61 +22,26 @@ public class SpeechToTextViewModel : INotifyPropertyChanged
         SelectedLocale = AvailableLocales
             .FirstOrDefault(c => c.Name == CultureInfo.CurrentCulture.Name)
             ?? AvailableLocales.First();
-
-        ToggleListenCommand = new Command(async () => await ToggleListenAsync());
-        ClearCommand = new Command(() =>
-        {
-            RecognizedText = "";
-            ConfidenceText = "";
-            HasConfidence = false;
-            StatusText = "Ready";
-        });
-        SetContinuousModeCommand = new Command(() => IsContinuousMode = true);
-        SetUntilSilenceModeCommand = new Command(() => IsContinuousMode = false);
     }
 
     public List<CultureInfo> AvailableLocales { get; }
 
+    [ObservableProperty]
     CultureInfo selectedLocale = null!;
-    public CultureInfo SelectedLocale
-    {
-        get => selectedLocale;
-        set { selectedLocale = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
     bool preferOnDevice;
-    public bool PreferOnDevice
-    {
-        get => preferOnDevice;
-        set { preferOnDevice = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SilenceTimeoutText))]
     double silenceTimeoutSeconds = 3;
-    public double SilenceTimeoutSeconds
-    {
-        get => silenceTimeoutSeconds;
-        set
-        {
-            silenceTimeoutSeconds = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(SilenceTimeoutText));
-        }
-    }
 
     public string SilenceTimeoutText => $"Silence Timeout: {SilenceTimeoutSeconds:0}s";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContinuousButtonColor))]
+    [NotifyPropertyChangedFor(nameof(UntilSilenceButtonColor))]
     bool isContinuousMode = true;
-    public bool IsContinuousMode
-    {
-        get => isContinuousMode;
-        set
-        {
-            isContinuousMode = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(ContinuousButtonColor));
-            OnPropertyChanged(nameof(UntilSilenceButtonColor));
-        }
-    }
 
     public Color ContinuousButtonColor =>
         IsContinuousMode
@@ -89,53 +53,40 @@ public class SpeechToTextViewModel : INotifyPropertyChanged
             ? Color.FromArgb("#9A81EA")
             : Color.FromArgb("#6E6E6E");
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ListenButtonText))]
     bool isListening;
-    public bool IsListening
-    {
-        get => isListening;
-        set
-        {
-            isListening = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(ListenButtonText));
-        }
-    }
 
     public string ListenButtonText => IsListening ? "Stop Listening" : "Start Listening";
 
+    [ObservableProperty]
     string statusText = "Ready";
-    public string StatusText
-    {
-        get => statusText;
-        set { statusText = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
     string? recognizedText;
-    public string? RecognizedText
-    {
-        get => recognizedText;
-        set { recognizedText = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
     string? confidenceText;
-    public string? ConfidenceText
-    {
-        get => confidenceText;
-        set { confidenceText = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
     bool hasConfidence;
-    public bool HasConfidence
+
+    [RelayCommand]
+    void SetContinuousMode() => IsContinuousMode = true;
+
+    [RelayCommand]
+    void SetUntilSilenceMode() => IsContinuousMode = false;
+
+    [RelayCommand]
+    void Clear()
     {
-        get => hasConfidence;
-        set { hasConfidence = value; OnPropertyChanged(); }
+        RecognizedText = "";
+        ConfidenceText = "";
+        HasConfidence = false;
+        StatusText = "Ready";
     }
 
-    public ICommand ToggleListenCommand { get; }
-    public ICommand ClearCommand { get; }
-    public ICommand SetContinuousModeCommand { get; }
-    public ICommand SetUntilSilenceModeCommand { get; }
-
+    [RelayCommand(AllowConcurrentExecutions = true)]
     async Task ToggleListenAsync()
     {
         if (IsListening)
@@ -191,9 +142,27 @@ public class SpeechToTextViewModel : INotifyPropertyChanged
             PreferOnDevice = PreferOnDevice
         };
 
+        var accumulated = "";
+        var lastFinal = "";
+
         await foreach (var result in stt.ContinuousRecognize(options, ct))
         {
-            RecognizedText = result.Text;
+            if (result.IsFinal)
+            {
+                // Append final segment to accumulated text
+                if (accumulated.Length > 0)
+                    accumulated += " ";
+                accumulated += result.Text;
+                lastFinal = accumulated;
+                RecognizedText = accumulated;
+            }
+            else
+            {
+                // Show accumulated finals + current partial
+                RecognizedText = accumulated.Length > 0
+                    ? accumulated + " " + result.Text
+                    : result.Text;
+            }
 
             if (result.Confidence.HasValue)
             {
@@ -232,8 +201,4 @@ public class SpeechToTextViewModel : INotifyPropertyChanged
             StatusText = "No speech detected";
         }
     }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    void OnPropertyChanged([CallerMemberName] string? name = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

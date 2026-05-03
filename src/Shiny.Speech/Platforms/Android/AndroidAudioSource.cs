@@ -1,4 +1,3 @@
-#if ANDROID
 using Android.Media;
 using Microsoft.Extensions.Logging;
 
@@ -88,4 +87,3 @@ public class AndroidAudioSource(ILogger<AndroidAudioSource> logger) : IAudioSour
         GC.SuppressFinalize(this);
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if APPLE
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using AVFoundation;
@@ -22,11 +21,15 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             switch (status)
             {
                 case SFSpeechRecognizerAuthorizationStatus.Authorized:
+#if MACOS
+                    tcs.TrySetResult(AccessState.Available);
+#else
                     var audioSession = AVAudioSession.SharedInstance();
                     audioSession.RequestRecordPermission(granted =>
                     {
                         tcs.TrySetResult(granted ? AccessState.Available : AccessState.Denied);
                     });
+#endif
                     break;
 
                 case SFSpeechRecognizerAuthorizationStatus.Denied:
@@ -97,6 +100,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
         try
         {
+#if !MACOS
             var audioSession = AVAudioSession.SharedInstance();
             audioSession.SetCategory(AVAudioSessionCategory.Record, (AVAudioSessionCategoryOptions)0, out var categoryError);
             if (categoryError != null)
@@ -105,6 +109,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             audioSession.SetActive(true, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out var activeError);
             if (activeError != null)
                 throw new InvalidOperationException($"Failed to activate audio session: {activeError.LocalizedDescription}");
+#endif
 
             var inputNode = audioEngine.InputNode;
             var recordingFormat = inputNode.GetBusOutputFormat(0);
@@ -188,8 +193,10 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
             recognitionTask?.Cancel();
 
+#if !MACOS
             var session = AVAudioSession.SharedInstance();
             session.SetActive(false, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out _);
+#endif
 
             logger.LogDebug("Speech recognition stopped");
         }
@@ -209,4 +216,3 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         return lastText;
     }
 }
-#endif

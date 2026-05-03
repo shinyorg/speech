@@ -14,7 +14,10 @@ public static class SpeechServiceCollectionExtensions
 
     public static IServiceCollection AddSpeechToText(this IServiceCollection services)
     {
-#if PLATFORM
+#if ANDROID
+        services.TryAddSingleton<ActivityProvider>();
+        services.TryAddSingleton<ISpeechToTextService, SpeechToTextImpl>();
+#elif PLATFORM
         services.TryAddSingleton<ISpeechToTextService, SpeechToTextImpl>();
 #else
         if (OperatingSystem.IsBrowser())

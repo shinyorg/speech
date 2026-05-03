@@ -1,4 +1,3 @@
-#if WINDOWS
 using Microsoft.Extensions.Logging;
 using Windows.Media.Core;
 using Windows.Media.Playback;
@@ -70,4 +69,3 @@ public class WindowsAudioPlayer(ILogger<WindowsAudioPlayer> logger) : IAudioPlay
         return ValueTask.CompletedTask;
     }
 }
-#endif

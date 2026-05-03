@@ -6,83 +6,119 @@
              x:DataType="local:SpeechToTextViewModel"
              Title="Speech to Text">
     <ScrollView Padding="20">
-        <VerticalStackLayout Spacing="15">
+        <VerticalStackLayout Spacing="16">
 
-            <!-- Status -->
-            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
-                   Padding="15"
-                   CornerRadius="8">
-                <VerticalStackLayout Spacing="5">
+            <!-- Status Card -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="4">
                     <Label Text="{Binding StatusText}"
-                           FontSize="14"
+                           FontSize="15"
+                           FontFamily="OpenSansSemibold"
                            TextColor="{StaticResource Primary}" />
                     <Label Text="{Binding ConfidenceText}"
                            FontSize="12"
-                           TextColor="Gray"
+                           TextColor="{StaticResource Gray400}"
                            IsVisible="{Binding HasConfidence}" />
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Mode Toggle -->
-            <Label Text="Mode"
-                   FontSize="12"
-                   TextColor="Gray" />
+            <Label Text="MODE"
+                   FontSize="11"
+                   FontFamily="OpenSansSemibold"
+                   TextColor="{StaticResource Gray400}"
+                   Margin="0,4,0,0" />
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                 <Button Text="Continuous"
                         Command="{Binding SetContinuousModeCommand}"
-                        BackgroundColor="{Binding ContinuousButtonColor}" />
+                        BackgroundColor="{Binding ContinuousButtonColor}"
+                        CornerRadius="12" />
                 <Button Grid.Column="1"
                         Text="Until Silence"
                         Command="{Binding SetUntilSilenceModeCommand}"
-                        BackgroundColor="{Binding UntilSilenceButtonColor}" />
+                        BackgroundColor="{Binding UntilSilenceButtonColor}"
+                        CornerRadius="12" />
             </Grid>
 
-            <!-- Language Picker -->
-            <Label Text="Language"
-                   FontSize="12"
-                   TextColor="Gray" />
-            <Picker ItemsSource="{Binding AvailableLocales}"
-                    ItemDisplayBinding="{Binding DisplayName}"
-                    SelectedItem="{Binding SelectedLocale}" />
+            <!-- Settings Card -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="SETTINGS"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
 
-            <!-- Options -->
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                <Label Text="Prefer On-Device"
-                       VerticalOptions="Center" />
-                <Switch Grid.Column="1"
-                        IsToggled="{Binding PreferOnDevice}" />
+                    <Label Text="Language"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray400}" />
+                    <Picker ItemsSource="{Binding AvailableLocales}"
+                            ItemDisplayBinding="{Binding DisplayName}"
+                            SelectedItem="{Binding SelectedLocale}" />
 
-                <Label Grid.Row="1"
-                       Text="{Binding SilenceTimeoutText}"
-                       VerticalOptions="Center" />
-                <Stepper Grid.Row="1" Grid.Column="1"
-                         Minimum="1" Maximum="10" Increment="1"
-                         Value="{Binding SilenceTimeoutSeconds}" />
-            </Grid>
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Prefer On-Device"
+                               VerticalOptions="Center" />
+                        <Switch Grid.Column="1"
+                                IsToggled="{Binding PreferOnDevice}"
+                                OnColor="{StaticResource Primary}" />
+                    </Grid>
+
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="{Binding SilenceTimeoutText}"
+                               VerticalOptions="Center" />
+                        <Stepper Grid.Column="1"
+                                 Minimum="1" Maximum="10" Increment="1"
+                                 Value="{Binding SilenceTimeoutSeconds}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
 
             <!-- Controls -->
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <Button Text="{Binding ListenButtonText}"
-                        Command="{Binding ToggleListenCommand}" />
+                        Command="{Binding ToggleListenCommand}"
+                        CornerRadius="12"
+                        FontSize="16"
+                        HeightRequest="50" />
                 <Button Grid.Column="1"
                         Text="Clear"
                         Command="{Binding ClearCommand}"
-                        BackgroundColor="{StaticResource Gray500}" />
+                        BackgroundColor="{AppThemeBinding Light={StaticResource Gray300}, Dark={StaticResource Gray500}}"
+                        CornerRadius="12"
+                        HeightRequest="50"
+                        WidthRequest="80" />
             </Grid>
 
             <!-- Recognized Text -->
-            <Label Text="Recognized Text"
-                   FontSize="12"
-                   TextColor="Gray"
-                   Margin="0,10,0,0" />
-            <Frame BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
-                   Padding="15"
-                   CornerRadius="8"
-                   MinimumHeightRequest="200">
+            <Label Text="RECOGNIZED TEXT"
+                   FontSize="11"
+                   FontFamily="OpenSansSemibold"
+                   TextColor="{StaticResource Gray400}"
+                   Margin="0,8,0,0" />
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1"
+                    MinimumHeightRequest="200">
                 <Label Text="{Binding RecognizedText}"
                        FontSize="16"
                        LineBreakMode="WordWrap" />
-            </Frame>
+            </Border>
 
         </VerticalStackLayout>
     </ScrollView>

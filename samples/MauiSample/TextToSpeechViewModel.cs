@@ -1,13 +1,13 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Windows.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Shiny;
 using Shiny.Speech;
 
 namespace MauiSample;
 
-public class TextToSpeechViewModel : INotifyPropertyChanged
+public partial class TextToSpeechViewModel : ObservableObject, IPageLifecycleAware
 {
     readonly ITextToSpeechService tts;
 
@@ -21,79 +21,51 @@ public class TextToSpeechViewModel : INotifyPropertyChanged
             .ToList();
         cultures.Insert(0, CultureInfo.InvariantCulture); // "All" option
         AvailableLocales = cultures;
-
-        SpeakCommand = new Command(async () => await SpeakAsync());
-        StopCommand = new Command(async () => await tts.StopAsync());
-        LoadVoicesCommand = new Command(async () => await LoadVoicesAsync());
     }
 
     public List<CultureInfo> AvailableLocales { get; }
 
-    CultureInfo? selectedLocale;
-    public CultureInfo? SelectedLocale
-    {
-        get => selectedLocale;
-        set
-        {
-            selectedLocale = value;
-            OnPropertyChanged();
-            LoadVoicesCommand.Execute(null);
-        }
-    }
-
     public ObservableCollection<VoiceInfo> Voices { get; } = new();
 
+    [ObservableProperty]
+    CultureInfo? selectedLocale;
+
+    [ObservableProperty]
     VoiceInfo? selectedVoice;
-    public VoiceInfo? SelectedVoice
-    {
-        get => selectedVoice;
-        set { selectedVoice = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
     string textToSpeak = "Hello! I am the Shiny Speech library. How does this voice sound?";
-    public string TextToSpeak
-    {
-        get => textToSpeak;
-        set { textToSpeak = value; OnPropertyChanged(); }
-    }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RateText))]
     double speechRate = 1.0;
-    public double SpeechRate
-    {
-        get => speechRate;
-        set { speechRate = value; OnPropertyChanged(); OnPropertyChanged(nameof(RateText)); }
-    }
+
     public string RateText => $"Rate: {SpeechRate:F1}x";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PitchText))]
     double pitch = 1.0;
-    public double Pitch
-    {
-        get => pitch;
-        set { pitch = value; OnPropertyChanged(); OnPropertyChanged(nameof(PitchText)); }
-    }
+
     public string PitchText => $"Pitch: {Pitch:F1}";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VolumeText))]
     double volume = 1.0;
-    public double Volume
-    {
-        get => volume;
-        set { volume = value; OnPropertyChanged(); OnPropertyChanged(nameof(VolumeText)); }
-    }
+
     public string VolumeText => $"Volume: {Volume:P0}";
 
+    [ObservableProperty]
     string statusText = "Ready";
-    public string StatusText
-    {
-        get => statusText;
-        set { statusText = value; OnPropertyChanged(); }
-    }
 
     public string VoiceCountText => $"Voice ({Voices.Count} available)";
 
-    public ICommand SpeakCommand { get; }
-    public ICommand StopCommand { get; }
-    public ICommand LoadVoicesCommand { get; }
+    partial void OnSelectedLocaleChanged(CultureInfo? value)
+        => LoadVoicesCommand.Execute(null);
 
+    public void OnAppearing() => LoadVoicesCommand.Execute(null);
+    public void OnDisappearing() { }
+
+    [RelayCommand]
     async Task LoadVoicesAsync()
     {
         try
@@ -118,6 +90,7 @@ public class TextToSpeechViewModel : INotifyPropertyChanged
         }
     }
 
+    [RelayCommand]
     async Task SpeakAsync()
     {
         if (string.IsNullOrWhiteSpace(TextToSpeak))
@@ -146,7 +119,6 @@ public class TextToSpeechViewModel : INotifyPropertyChanged
         }
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-    void OnPropertyChanged([CallerMemberName] string? name = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    [RelayCommand]
+    async Task StopAsync() => await tts.StopAsync();
 }

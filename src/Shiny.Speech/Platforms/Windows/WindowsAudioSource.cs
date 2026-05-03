@@ -1,4 +1,3 @@
-#if WINDOWS
 using Microsoft.Extensions.Logging;
 using Windows.Media;
 using Windows.Media.Audio;
@@ -96,4 +95,3 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         GC.SuppressFinalize(this);
     }
 }
-#endif

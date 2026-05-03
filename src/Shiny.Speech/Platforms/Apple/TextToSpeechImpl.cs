@@ -1,4 +1,3 @@
-#if APPLE
 using System.Globalization;
 using AVFoundation;
 using Microsoft.Extensions.Logging;
@@ -79,10 +78,12 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
         try
         {
+#if !MACOS
             // Ensure audio session is set for playback (STT may have left it on Record)
             var audioSession = AVAudioSession.SharedInstance();
             audioSession.SetCategory(AVAudioSessionCategory.Playback, (AVAudioSessionCategoryOptions)0, out _);
             audioSession.SetActive(true, out _);
+#endif
 
             synthesizer.SpeakUtterance(utterance);
             logger.LogDebug("Text-to-speech started");
@@ -106,4 +107,3 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         return Task.CompletedTask;
     }
 }
-#endif

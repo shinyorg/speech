@@ -1,4 +1,3 @@
-#if WINDOWS
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -125,4 +124,3 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         return lastText;
     }
 }
-#endif
