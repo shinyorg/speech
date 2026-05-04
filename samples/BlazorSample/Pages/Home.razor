@@ -30,18 +30,44 @@
     <div class="card">
         <div class="card-label">Mode</div>
         <div class="mode-toggle">
-            <button class="mode-btn @(isContinuousMode ? "active" : "")"
-                    @onclick="() => isContinuousMode = true"
+            <button class="mode-btn @(sttMode == "Continuous" ? "active" : "")"
+                    @onclick="@(() => SetSttMode("Continuous"))"
                     disabled="@isListening">
                 Continuous
             </button>
-            <button class="mode-btn @(!isContinuousMode ? "active" : "")"
-                    @onclick="() => isContinuousMode = false"
+            <button class="mode-btn @(sttMode == "UntilSilence" ? "active" : "")"
+                    @onclick="@(() => SetSttMode("UntilSilence"))"
                     disabled="@isListening">
                 Until Silence
             </button>
+            <button class="mode-btn @(sttMode == "WakeWord" ? "active" : "")"
+                    @onclick="@(() => SetSttMode("WakeWord"))"
+                    disabled="@isListening">
+                Wake Word
+            </button>
+            <button class="mode-btn @(sttMode == "Keyword" ? "active" : "")"
+                    @onclick="@(() => SetSttMode("Keyword"))"
+                    disabled="@isListening">
+                Keyword
+            </button>
         </div>
     </div>
+
+    @if (sttMode == "WakeWord")
+    {
+        <div class="card">
+            <div class="card-label">Wake Phrase</div>
+            <input type="text" @bind="wakePhrase" placeholder="e.g. Hey Computer" disabled="@isListening" />
+        </div>
+    }
+
+    @if (sttMode == "Keyword")
+    {
+        <div class="card">
+            <div class="card-label">Keywords (comma-separated)</div>
+            <input type="text" @bind="keywordsText" placeholder="e.g. Yes, No, Maybe" disabled="@isListening" />
+        </div>
+    }
 
     <!-- Controls -->
     <div class="btn-row" style="margin-bottom:16px">
@@ -160,7 +186,9 @@ else
 
     // --- STT State ---
     bool isListening;
-    bool isContinuousMode = true;
+    string sttMode = "Continuous";
+    string wakePhrase = "Hey Computer";
+    string keywordsText = "Yes, No, Maybe";
     string sttStatus = "Ready";
     float? sttConfidence;
     string? recognizedText;
@@ -212,10 +240,21 @@ else
 
         try
         {
-            if (isContinuousMode)
-                await ListenContinuousAsync(listenCts.Token);
-            else
-                await ListenUntilSilenceAsync(listenCts.Token);
+            switch (sttMode)
+            {
+                case "Continuous":
+                    await ListenContinuousAsync(listenCts.Token);
+                    break;
+                case "UntilSilence":
+                    await ListenUntilSilenceAsync(listenCts.Token);
+                    break;
+                case "WakeWord":
+                    await ListenWakeWordAsync(listenCts.Token);
+                    break;
+                case "Keyword":
+                    await ListenKeywordAsync(listenCts.Token);
+                    break;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -301,6 +340,57 @@ else
     {
         listenCts?.Cancel();
     }
+
+    async Task ListenWakeWordAsync(CancellationToken ct)
+    {
+        sttStatus = $"Listening for wake word: \"{wakePhrase}\"...";
+        StateHasChanged();
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = new CultureInfo(selectedLocale)
+        };
+
+        var result = await SpeechToText.ListenWithWakeWord(wakePhrase, options, ct);
+
+        if (result != null)
+        {
+            recognizedText = result;
+            sttStatus = "Wake word detected — command captured";
+        }
+        else
+        {
+            sttStatus = "No command detected";
+        }
+    }
+
+    async Task ListenKeywordAsync(CancellationToken ct)
+    {
+        var keywords = keywordsText
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        sttStatus = $"Listening for keywords: {string.Join(", ", keywords)}...";
+        StateHasChanged();
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = new CultureInfo(selectedLocale)
+        };
+
+        var result = await SpeechToText.ListenForKeyword(keywords, options, ct);
+
+        if (result != null)
+        {
+            recognizedText = $"Keyword detected: {result}";
+            sttStatus = $"Matched keyword: \"{result}\"";
+        }
+        else
+        {
+            sttStatus = "No keyword detected";
+        }
+    }
+
+    void SetSttMode(string mode) => sttMode = mode;
 
     void ClearStt()
     {

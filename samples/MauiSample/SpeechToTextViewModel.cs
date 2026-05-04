@@ -41,17 +41,40 @@ public partial class SpeechToTextViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ContinuousButtonColor))]
     [NotifyPropertyChangedFor(nameof(UntilSilenceButtonColor))]
-    bool isContinuousMode = true;
+    [NotifyPropertyChangedFor(nameof(WakeWordButtonColor))]
+    [NotifyPropertyChangedFor(nameof(KeywordButtonColor))]
+    [NotifyPropertyChangedFor(nameof(IsWakeWordMode))]
+    [NotifyPropertyChangedFor(nameof(IsKeywordMode))]
+    string selectedMode = "Continuous";
+
+    public bool IsWakeWordMode => SelectedMode == "WakeWord";
+    public bool IsKeywordMode => SelectedMode == "Keyword";
 
     public Color ContinuousButtonColor =>
-        IsContinuousMode
+        SelectedMode == "Continuous"
             ? Color.FromArgb("#9A81EA")
             : Color.FromArgb("#6E6E6E");
 
     public Color UntilSilenceButtonColor =>
-        !IsContinuousMode
+        SelectedMode == "UntilSilence"
             ? Color.FromArgb("#9A81EA")
             : Color.FromArgb("#6E6E6E");
+
+    public Color WakeWordButtonColor =>
+        SelectedMode == "WakeWord"
+            ? Color.FromArgb("#9A81EA")
+            : Color.FromArgb("#6E6E6E");
+
+    public Color KeywordButtonColor =>
+        SelectedMode == "Keyword"
+            ? Color.FromArgb("#9A81EA")
+            : Color.FromArgb("#6E6E6E");
+
+    [ObservableProperty]
+    string wakePhrase = "Hey Computer";
+
+    [ObservableProperty]
+    string keywordsText = "Yes, No, Maybe";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ListenButtonText))]
@@ -72,10 +95,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     bool hasConfidence;
 
     [RelayCommand]
-    void SetContinuousMode() => IsContinuousMode = true;
-
-    [RelayCommand]
-    void SetUntilSilenceMode() => IsContinuousMode = false;
+    void SetMode(string mode) => SelectedMode = mode;
 
     [RelayCommand]
     void Clear()
@@ -110,10 +130,21 @@ public partial class SpeechToTextViewModel : ObservableObject
 
         try
         {
-            if (IsContinuousMode)
-                await ListenContinuousAsync(listenCts.Token);
-            else
-                await ListenUntilSilenceAsync(listenCts.Token);
+            switch (SelectedMode)
+            {
+                case "Continuous":
+                    await ListenContinuousAsync(listenCts.Token);
+                    break;
+                case "UntilSilence":
+                    await ListenUntilSilenceAsync(listenCts.Token);
+                    break;
+                case "WakeWord":
+                    await ListenWakeWordAsync(listenCts.Token);
+                    break;
+                case "Keyword":
+                    await ListenKeywordAsync(listenCts.Token);
+                    break;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -199,6 +230,58 @@ public partial class SpeechToTextViewModel : ObservableObject
         else
         {
             StatusText = "No speech detected";
+        }
+    }
+
+    async Task ListenWakeWordAsync(CancellationToken ct)
+    {
+        StatusText = $"Listening for wake word: \"{WakePhrase}\"...";
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = SelectedLocale,
+            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
+            PreferOnDevice = PreferOnDevice
+        };
+
+        var result = await stt.ListenWithWakeWord(WakePhrase, options, ct);
+
+        if (result != null)
+        {
+            RecognizedText = result;
+            StatusText = "Wake word detected — command captured";
+        }
+        else
+        {
+            StatusText = "No command detected";
+        }
+    }
+
+    async Task ListenKeywordAsync(CancellationToken ct)
+    {
+        var keywords = KeywordsText
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
+        StatusText = $"Listening for keywords: {string.Join(", ", keywords)}...";
+
+        var options = new SpeechRecognitionOptions
+        {
+            Culture = SelectedLocale,
+            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
+            PreferOnDevice = PreferOnDevice
+        };
+
+        var result = await stt.ListenForKeyword(keywords, options, ct);
+
+        if (result != null)
+        {
+            RecognizedText = $"Keyword detected: {result}";
+            StatusText = $"Matched keyword: \"{result}\"";
+        }
+        else
+        {
+            StatusText = "No keyword detected";
         }
     }
 }

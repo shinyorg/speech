@@ -32,17 +32,65 @@
                    FontFamily="OpenSansSemibold"
                    TextColor="{StaticResource Gray400}"
                    Margin="0,4,0,0" />
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="10">
                 <Button Text="Continuous"
-                        Command="{Binding SetContinuousModeCommand}"
+                        Command="{Binding SetModeCommand}"
+                        CommandParameter="Continuous"
                         BackgroundColor="{Binding ContinuousButtonColor}"
                         CornerRadius="12" />
                 <Button Grid.Column="1"
                         Text="Until Silence"
-                        Command="{Binding SetUntilSilenceModeCommand}"
+                        Command="{Binding SetModeCommand}"
+                        CommandParameter="UntilSilence"
                         BackgroundColor="{Binding UntilSilenceButtonColor}"
                         CornerRadius="12" />
+                <Button Grid.Row="1"
+                        Text="Wake Word"
+                        Command="{Binding SetModeCommand}"
+                        CommandParameter="WakeWord"
+                        BackgroundColor="{Binding WakeWordButtonColor}"
+                        CornerRadius="12" />
+                <Button Grid.Row="1" Grid.Column="1"
+                        Text="Keyword"
+                        Command="{Binding SetModeCommand}"
+                        CommandParameter="Keyword"
+                        BackgroundColor="{Binding KeywordButtonColor}"
+                        CornerRadius="12" />
             </Grid>
+
+            <!-- Wake Word Settings -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1"
+                    IsVisible="{Binding IsWakeWordMode}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="WAKE PHRASE"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Entry Text="{Binding WakePhrase}"
+                           Placeholder="e.g. Hey Computer" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Keyword Settings -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1"
+                    IsVisible="{Binding IsKeywordMode}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="KEYWORDS (comma-separated)"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Entry Text="{Binding KeywordsText}"
+                           Placeholder="e.g. Yes, No, Maybe" />
+                </VerticalStackLayout>
+            </Border>
 
             <!-- Settings Card -->
             <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"

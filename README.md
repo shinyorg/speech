@@ -82,6 +82,24 @@ public class MyService(ISpeechToTextService stt)
 }
 ```
 
+### Wake Word Listening
+
+```csharp
+// "Hey Siri" style — listens continuously until wake phrase is detected,
+// then captures everything spoken after it until silence
+var command = await stt.ListenWithWakeWord("Hey Computer", cancellationToken: ct);
+// User says: "Hey Computer, what's the weather" → returns "what's the weather"
+// User says: "Hey Computer" [pause] "what's the weather" → returns "what's the weather"
+```
+
+### Keyword Listening
+
+```csharp
+// Listens until one of the specified keywords is detected
+var answer = await stt.ListenForKeyword(["Yes", "No", "Maybe"], cancellationToken: ct);
+// User says: "I think yes" → returns "Yes"
+```
+
 ## Custom Cloud Provider
 
 Implement `ISpeechToTextProvider` and/or `ITextToSpeechProvider` from `Shiny.Speech.Cloud`:
