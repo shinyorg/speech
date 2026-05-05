@@ -19,6 +19,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
     }
 
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
+    public bool IsListening { get; private set; }
 
     public async Task<AccessState> RequestAccess()
     {
@@ -57,6 +58,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         try
         {
             await StartRecognitionAsync(lang, true);
+            IsListening = true;
             logger.LogDebug("Browser speech recognition started (continuous)");
 
             using var reg = cancellationToken.Register(() =>
@@ -72,6 +74,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         }
         finally
         {
+            IsListening = false;
             StopRecognition();
             activeChannel = null;
             logger.LogDebug("Browser speech recognition stopped");
@@ -98,6 +101,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         try
         {
             await StartRecognitionAsync(lang, false);
+            IsListening = true;
             logger.LogDebug("Browser speech recognition started (single)");
 
             using var reg = cancellationToken.Register(() =>
@@ -117,6 +121,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
         }
         finally
         {
+            IsListening = false;
             StopRecognition();
             activeChannel = null;
             logger.LogDebug("Browser speech recognition stopped");

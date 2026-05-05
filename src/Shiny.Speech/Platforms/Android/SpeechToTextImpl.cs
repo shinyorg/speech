@@ -16,6 +16,8 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
     public bool IsSupported =>
         Android.Speech.SpeechRecognizer.IsRecognitionAvailable(Android.App.Application.Context);
 
+    public bool IsListening { get; private set; }
+
     public async Task<AccessState> RequestAccess()
     {
         if (!IsSupported)
@@ -99,6 +101,7 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
                 listenIntent.PutExtra(RecognizerIntent.ExtraSpeechInputMinimumLengthMillis, silenceMs);
 
                 recognizer.StartListening(listenIntent);
+                IsListening = true;
                 logger.LogDebug("Android speech recognition started");
                 tcs.SetResult();
             });
@@ -124,6 +127,7 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
         }
         finally
         {
+            IsListening = false;
             stopped = true;
             audioManager?.AdjustStreamVolume(Stream.Music, Adjust.Unmute, VolumeNotificationFlags.RemoveSoundAndVibrate);
             var r = recognizer;

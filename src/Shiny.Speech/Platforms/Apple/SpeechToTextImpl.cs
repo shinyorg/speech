@@ -12,6 +12,8 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
     public bool IsSupported =>
         SFSpeechRecognizer.AuthorizationStatus != SFSpeechRecognizerAuthorizationStatus.Restricted;
 
+    public bool IsListening { get; private set; }
+
     public Task<AccessState> RequestAccess()
     {
         var tcs = new TaskCompletionSource<AccessState>();
@@ -166,6 +168,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             if (engineError != null)
                 throw new InvalidOperationException($"Failed to start audio engine: {engineError.LocalizedDescription}");
 
+            IsListening = true;
             logger.LogDebug("Speech recognition started");
             ResetSilenceTimer();
 
@@ -182,6 +185,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         }
         finally
         {
+            IsListening = false;
             silenceTimer?.Cancel();
             silenceTimer?.Dispose();
 

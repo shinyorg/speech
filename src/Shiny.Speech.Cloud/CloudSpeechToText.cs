@@ -15,6 +15,7 @@ public class CloudSpeechToText(
 ) : ISpeechToTextService
 {
     public bool IsSupported => true;
+    public bool IsListening { get; private set; }
 
     public Task<AccessState> RequestAccess()
         => Task.FromResult(AccessState.Available);
@@ -27,6 +28,7 @@ public class CloudSpeechToText(
 
         await using var source = audioSource;
         var audioStream = await source.StartCaptureAsync(cancellationToken);
+        IsListening = true;
         logger.LogDebug("Audio capture started for cloud speech recognition");
 
         try
@@ -40,6 +42,7 @@ public class CloudSpeechToText(
         }
         finally
         {
+            IsListening = false;
             await source.StopCaptureAsync();
             logger.LogDebug("Audio capture stopped");
         }

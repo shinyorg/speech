@@ -5,6 +5,7 @@ namespace Shiny.Speech;
 public interface ISpeechToTextService
 {
     bool IsSupported { get; }
+    bool IsListening { get; }
     Task<AccessState> RequestAccess();
 
     IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(

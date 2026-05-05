@@ -68,6 +68,10 @@ public class MyService(ISpeechToTextService stt)
         if (access != AccessState.Available)
             return;
 
+        // Check if already listening
+        if (stt.IsListening)
+            return;
+
         // Simple: wait for silence
         var text = await stt.ListenUntilSilence(cancellationToken: ct);
 

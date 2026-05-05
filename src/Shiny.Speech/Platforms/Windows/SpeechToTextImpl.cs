@@ -9,6 +9,7 @@ namespace Shiny.Speech;
 public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextService
 {
     public bool IsSupported => true;
+    public bool IsListening { get; private set; }
 
     public async Task<AccessState> RequestAccess()
     {
@@ -83,6 +84,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             };
 
             await recognizer.ContinuousRecognitionSession.StartAsync();
+            IsListening = true;
             logger.LogDebug("Windows speech recognition started");
 
             using var reg = cancellationToken.Register(async () =>
@@ -105,6 +107,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         }
         finally
         {
+            IsListening = false;
             recognizer?.Dispose();
             logger.LogDebug("Windows speech recognition stopped");
         }
