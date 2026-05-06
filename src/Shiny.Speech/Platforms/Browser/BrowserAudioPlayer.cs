@@ -19,7 +19,7 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
 
         // Convert stream to base64 data URL for the browser Audio API
         using var ms = new MemoryStream();
-        audioStream.CopyTo(ms);
+        await audioStream.CopyToAsync(ms, cancellationToken);
         var base64 = Convert.ToBase64String(ms.ToArray());
         var dataUrl = $"data:audio/mp3;base64,{base64}";
 

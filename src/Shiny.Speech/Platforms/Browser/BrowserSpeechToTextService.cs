@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Threading.Channels;
@@ -8,15 +7,9 @@ using System.Runtime.InteropServices.JavaScript;
 namespace Shiny.Speech;
 
 [SupportedOSPlatform("browser")]
-public partial class BrowserSpeechToTextService : ISpeechToTextService
+public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextService> logger) : ISpeechToTextService
 {
-    readonly ILogger<BrowserSpeechToTextService> logger;
     static Channel<SpeechRecognitionResult>? activeChannel;
-
-    public BrowserSpeechToTextService(ILogger<BrowserSpeechToTextService> logger)
-    {
-        this.logger = logger;
-    }
 
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
     public bool IsListening { get; private set; }
@@ -61,7 +54,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
             IsListening = true;
             logger.LogDebug("Browser speech recognition started (continuous)");
 
-            using var reg = cancellationToken.Register(() =>
+            await using var reg = cancellationToken.Register(() =>
             {
                 StopRecognition();
                 activeChannel?.Writer.TryComplete();
@@ -104,7 +97,7 @@ public partial class BrowserSpeechToTextService : ISpeechToTextService
             IsListening = true;
             logger.LogDebug("Browser speech recognition started (single)");
 
-            using var reg = cancellationToken.Register(() =>
+            await using var reg = cancellationToken.Register(() =>
             {
                 StopRecognition();
                 activeChannel?.Writer.TryComplete();
