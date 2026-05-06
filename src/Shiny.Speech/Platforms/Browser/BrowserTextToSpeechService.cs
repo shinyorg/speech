@@ -6,16 +6,9 @@ using System.Runtime.InteropServices.JavaScript;
 namespace Shiny.Speech;
 
 [SupportedOSPlatform("browser")]
-public partial class BrowserTextToSpeechService : ITextToSpeechService
+public partial class BrowserTextToSpeechService(ILogger<BrowserTextToSpeechService> logger) : ITextToSpeechService
 {
     static TaskCompletionSource? activeSpeakTcs;
-
-    readonly ILogger<BrowserTextToSpeechService> logger;
-
-    public BrowserTextToSpeechService(ILogger<BrowserTextToSpeechService> logger)
-    {
-        this.logger = logger;
-    }
 
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsSynthesisSupported();
     public bool IsSpeaking => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsSpeaking();

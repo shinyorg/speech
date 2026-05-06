@@ -129,7 +129,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 | iOS 15+ | SFSpeechRecognizer | AVSpeechSynthesizer | AVAudioEngine | AVAudioPlayer |
 | Android 26+ | SpeechRecognizer | Android TTS | AudioRecord | MediaPlayer |
 | Windows 10 19041+ | Windows.Media.SpeechRecognition | Windows.Media.SpeechSynthesis | AudioGraph | MediaPlayer |
-| Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Not supported | HTML5 `Audio` |
+| Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` |
 
 ### Browser (Blazor WebAssembly)
 
@@ -138,7 +138,7 @@ No manifest changes needed — the browser prompts the user for microphone acces
 <script src="shiny-speech.js"></script>
 ```
 
-> **Note:** `IAudioSource` (raw PCM capture) is not supported in the browser. The Web Speech API handles audio internally. Audio playback (`IAudioPlayer`) accepts any browser-supported format via a base64 data URL.
+> **Note:** `IAudioSource` captures raw PCM audio in the browser using the Web Audio API (`getUserMedia` + `ScriptProcessorNode`), downsampled to 16kHz 16-bit mono. Audio playback (`IAudioPlayer`) accepts any browser-supported format via a base64 data URL.
 
 ### iOS/macOS
 

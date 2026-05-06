@@ -1,18 +1,64 @@
+using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 
 namespace Shiny.Speech;
 
 [SupportedOSPlatform("browser")]
-public class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IAudioSource
+public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IAudioSource
 {
-    public Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default)
+    static PipeStream? activePipe;
+
+    public async Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default)
     {
-        logger.LogWarning("Browser audio capture is not supported — use cloud STT providers with browser-native recognition instead");
-        throw new PlatformNotSupportedException("Raw audio capture is not supported in the browser. Use ISpeechToTextService for browser speech recognition.");
+        await BrowserJsModule.ImportAsync();
+
+        var pipe = new PipeStream();
+        activePipe = pipe;
+
+        await StartMicrophoneCaptureAsync();
+        logger.LogDebug("Browser audio capture started");
+
+        return pipe;
     }
 
-    public Task StopCaptureAsync() => Task.CompletedTask;
+    public Task StopCaptureAsync()
+    {
+        StopMicrophoneCapture();
+        activePipe?.Dispose();
+        activePipe = null;
+        logger.LogDebug("Browser audio capture stopped");
+        return Task.CompletedTask;
+    }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync()
+    {
+        await StopCaptureAsync();
+        GC.SuppressFinalize(this);
+    }
+
+    [JSImport("shinySpeech.startMicrophoneCapture", "shiny-speech")]
+    private static partial Task StartMicrophoneCaptureAsync();
+
+    [JSImport("shinySpeech.stopMicrophoneCapture", "shiny-speech")]
+    private static partial void StopMicrophoneCapture();
+
+    [JSExport]
+    public static void OnAudioData(byte[] pcmData)
+    {
+        try
+        {
+            activePipe?.Write(pcmData, 0, pcmData.Length);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    [JSExport]
+    public static void OnCaptureError(string error)
+    {
+        activePipe?.Dispose();
+        activePipe = null;
+    }
 }

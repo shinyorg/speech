@@ -2,6 +2,10 @@
 let recognition = null;
 let audioElement = null;
 let recognitionStopped = false;
+let micAudioContext = null;
+let micStream = null;
+let micWorklet = null;
+let micSource = null;
 
 function getExports() {
     const { getAssemblyExports } = globalThis.getDotnetRuntime(0);
@@ -213,6 +217,75 @@ export const shinySpeech = {
 
     cancelSpeech() {
         window.speechSynthesis?.cancel();
+    },
+
+    // --- Raw Audio Capture (Microphone → PCM) ---
+    async startMicrophoneCapture() {
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+            console.error('[Shiny.Speech] Microphone access denied:', e.message);
+            getExports().then(exports => {
+                exports.Shiny.Speech.BrowserAudioSource.OnCaptureError('mic-denied');
+            });
+            return;
+        }
+
+        micAudioContext = new AudioContext();
+        micSource = micAudioContext.createMediaStreamSource(micStream);
+
+        // ScriptProcessorNode: deprecated but universally supported and simple
+        // 4096 buffer size, 1 input channel, 1 output channel
+        const bufferSize = 4096;
+        micWorklet = micAudioContext.createScriptProcessor(bufferSize, 1, 1);
+        const inputSampleRate = micAudioContext.sampleRate;
+        const targetSampleRate = 16000;
+
+        micWorklet.onaudioprocess = (event) => {
+            const float32 = event.inputBuffer.getChannelData(0);
+
+            // Downsample from inputSampleRate to 16kHz
+            const ratio = inputSampleRate / targetSampleRate;
+            const targetLength = Math.floor(float32.length / ratio);
+            const int16 = new Int16Array(targetLength);
+
+            for (let i = 0; i < targetLength; i++) {
+                const srcIndex = Math.floor(i * ratio);
+                // Clamp and convert float32 [-1,1] to int16 [-32768,32767]
+                let sample = float32[srcIndex];
+                sample = Math.max(-1, Math.min(1, sample));
+                int16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            }
+
+            const bytes = new Uint8Array(int16.buffer);
+            getExports().then(exports => {
+                exports.Shiny.Speech.BrowserAudioSource.OnAudioData(bytes);
+            });
+        };
+
+        micSource.connect(micWorklet);
+        micWorklet.connect(micAudioContext.destination);
+        console.log('[Shiny.Speech] Microphone capture started', { inputSampleRate, targetSampleRate });
+    },
+
+    stopMicrophoneCapture() {
+        if (micWorklet) {
+            micWorklet.disconnect();
+            micWorklet = null;
+        }
+        if (micSource) {
+            micSource.disconnect();
+            micSource = null;
+        }
+        if (micAudioContext) {
+            micAudioContext.close();
+            micAudioContext = null;
+        }
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
+        console.log('[Shiny.Speech] Microphone capture stopped');
     },
 
     // --- Audio Playback ---
