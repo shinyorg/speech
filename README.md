@@ -26,15 +26,12 @@ builder.Services.AddSpeechServices();
 ### Azure AI Speech (Cloud)
 
 ```csharp
-builder.Services.AddAudioSource();
-builder.Services.AddAudioPlayer();
 builder.Services.AddAzureSpeech("your-subscription-key", "your-region");
 ```
 
 ### ElevenLabs TTS (Cloud)
 
 ```csharp
-builder.Services.AddAudioPlayer();
 builder.Services.AddElevenLabsTextToSpeech("your-api-key");
 ```
 
@@ -122,7 +119,6 @@ public class MyCloudSttProvider : ISpeechToTextProvider
 }
 
 // Register:
-builder.Services.AddAudioSource();
 builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 ```
 

@@ -154,9 +154,8 @@ builder.Services.AddAudioPlayer();    // IAudioPlayer only
 
 **Azure AI Speech (replaces platform-native with cloud):**
 ```csharp
-builder.Services.AddAudioSource();    // Still need platform audio capture for STT
-builder.Services.AddAudioPlayer();    // Still need platform audio playback for TTS
 builder.Services.AddAzureSpeech("your-subscription-key", "eastus");
+// Automatically registers IAudioSource and IAudioPlayer for platform audio I/O
 ```
 
 Or with config object and selective services:
@@ -170,8 +169,8 @@ builder.Services.AddAzureSpeech(
 
 **ElevenLabs TTS (replaces platform-native TTS with cloud):**
 ```csharp
-builder.Services.AddAudioPlayer();    // Still need platform audio playback
 builder.Services.AddElevenLabsTextToSpeech("your-api-key");
+// Automatically registers IAudioPlayer for platform audio playback
 ```
 
 ### 3. Platform Permissions
@@ -365,8 +364,7 @@ public class MyCloudSttProvider : ISpeechToTextProvider
     }
 }
 
-// Register in DI
-builder.Services.AddAudioSource();
+// Register in DI (IAudioSource is auto-registered)
 builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 ```
 
@@ -379,7 +377,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 5. **Use `ContinuousRecognize`** — For real-time streaming transcription with partial results
 6. **Use `ListenWithWakeWord`** — For "Hey Siri" style activation where a wake phrase triggers command capture
 7. **Use `ListenForKeyword`** — For yes/no/choice scenarios where you need to detect a specific word from a set
-6. **Register platform services** — Cloud providers still need `AddAudioSource()` and `AddAudioPlayer()` for microphone/speaker access
+6. **Platform services auto-registered** — Cloud providers automatically register `IAudioSource` and `IAudioPlayer` as needed via `TryAdd`, so manual registration is no longer required
 7. **Handle `AccessState`** — Check for `NotSupported`, `Denied`, and `Restricted` states
 8. **Use `IsListening`/`IsSpeaking`/`IsPlaying`** — Check state before starting new listening/speech/playback
 9. **Configure silence timeout** — Default 2 seconds; adjust for your use case
