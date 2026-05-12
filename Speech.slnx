@@ -30,5 +30,7 @@
   <Project Path="src/Shiny.Speech.Azure/Shiny.Speech.Azure.csproj" />
   <Project Path="src/Shiny.Speech.Cloud/Shiny.Speech.Cloud.csproj" />
   <Project Path="src/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj" />
+  <Project Path="src/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj" />
+  <Project Path="src/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
   <Project Path="src/Shiny.Speech/Shiny.Speech.csproj" />
 </Solution>
