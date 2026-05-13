@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Shiny.Speech;
 
@@ -14,51 +14,95 @@ public class CloudSpeechToText(
     ILogger<CloudSpeechToText> logger
 ) : ISpeechToTextService
 {
+    CancellationTokenSource? cts;
+    Regex? keywordPattern;
+
     public bool IsSupported => true;
     public bool IsListening { get; private set; }
+
+    public event EventHandler<SpeechRecognitionResult>? ResultReceived;
+    public event EventHandler<string>? KeywordHeard;
+    public event EventHandler<SpeechRecognitionError>? Error;
 
     public Task<AccessState> RequestAccess()
         => Task.FromResult(AccessState.Available);
 
-    public async IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(
-        SpeechRecognitionOptions? options = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async Task Start(SpeechRecognitionOptions? options = null)
     {
-        options ??= new SpeechRecognitionOptions();
+        if (IsListening)
+            throw new InvalidOperationException("Speech recognition is already active. Call Stop() before starting again.");
 
-        await using var source = audioSource;
-        var audioStream = await source.StartCaptureAsync(cancellationToken);
+        options ??= new SpeechRecognitionOptions();
+        keywordPattern = BuildKeywordPattern(options.Keywords);
+        cts = new CancellationTokenSource();
+
+        var audioStream = await audioSource.StartCaptureAsync(cts.Token);
         IsListening = true;
         logger.LogDebug("Audio capture started for cloud speech recognition");
 
-        try
+        var token = cts.Token;
+
+        // consume provider results on a background task and raise events
+        _ = Task.Run(async () =>
         {
-            await foreach (var result in provider.RecognizeAsync(audioStream, options, cancellationToken))
+            try
             {
-                yield return result;
-                if (result.IsFinal)
-                    yield break;
+                await foreach (var result in provider.RecognizeAsync(audioStream, options, token))
+                {
+                    ResultReceived?.Invoke(this, result);
+
+                    if (result.IsFinal && keywordPattern != null)
+                    {
+                        var match = keywordPattern.Match(result.Text);
+                        if (match.Success)
+                            KeywordHeard?.Invoke(this, match.Value);
+                    }
+                }
             }
-        }
-        finally
-        {
-            IsListening = false;
-            await source.StopCaptureAsync();
-            logger.LogDebug("Audio capture stopped");
-        }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // expected on Stop()
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Cloud speech recognition error");
+                Error?.Invoke(this, new SpeechRecognitionError(ex.Message, ex));
+            }
+            finally
+            {
+                IsListening = false;
+                await audioSource.StopCaptureAsync();
+                logger.LogDebug("Audio capture stopped");
+            }
+        }, token);
     }
 
-    public async Task<string?> ListenUntilSilence(
-        SpeechRecognitionOptions? options = null,
-        CancellationToken cancellationToken = default)
+    public async Task Stop()
     {
-        string? lastText = null;
-        await foreach (var result in ContinuousRecognize(options, cancellationToken))
+        if (!IsListening)
+            return;
+
+        keywordPattern = null;
+
+        if (cts != null)
         {
-            lastText = result.Text;
-            if (result.IsFinal)
-                return result.Text;
+            await cts.CancelAsync();
+            cts.Dispose();
+            cts = null;
         }
-        return lastText;
+
+        IsListening = false;
+        logger.LogDebug("Cloud speech recognition stopped");
+    }
+
+    static Regex? BuildKeywordPattern(string[]? keywords)
+    {
+        if (keywords == null || keywords.Length == 0)
+            return null;
+
+        return new Regex(
+            @"\b(" + string.Join("|", keywords.Select(Regex.Escape)) + @")\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled
+        );
     }
 }

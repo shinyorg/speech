@@ -1,6 +1,5 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
-using System.Threading.Channels;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices.JavaScript;
 
@@ -9,10 +8,15 @@ namespace Shiny.Speech;
 [SupportedOSPlatform("browser")]
 public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextService> logger) : ISpeechToTextService
 {
-    static Channel<SpeechRecognitionResult>? activeChannel;
+    static BrowserSpeechToTextService? activeInstance;
+    static Regex? keywordPattern;
 
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
     public bool IsListening { get; private set; }
+
+    public event EventHandler<SpeechRecognitionResult>? ResultReceived;
+    public event EventHandler<string>? KeywordHeard;
+    public event EventHandler<SpeechRecognitionError>? Error;
 
     public async Task<AccessState> RequestAccess()
     {
@@ -31,94 +35,36 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
         };
     }
 
-    public async IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(
-        SpeechRecognitionOptions? options = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async Task Start(SpeechRecognitionOptions? options = null)
     {
+        if (IsListening)
+            throw new InvalidOperationException("Speech recognition is already active. Call Stop() before starting again.");
+
         await BrowserJsModule.ImportAsync();
         if (!IsRecognitionSupported())
-            yield break;
+            throw new InvalidOperationException("Speech recognition is not supported in this browser.");
 
         options ??= new SpeechRecognitionOptions();
+        keywordPattern = BuildKeywordPattern(options.Keywords);
+        activeInstance = this;
+
         var lang = options.Culture?.Name ?? "";
-
-        activeChannel = Channel.CreateUnbounded<SpeechRecognitionResult>(new UnboundedChannelOptions
-        {
-            SingleWriter = false,
-            SingleReader = true
-        });
-
-        try
-        {
-            await StartRecognitionAsync(lang, true);
-            IsListening = true;
-            logger.LogDebug("Browser speech recognition started (continuous)");
-
-            await using var reg = cancellationToken.Register(() =>
-            {
-                StopRecognition();
-                activeChannel?.Writer.TryComplete();
-            });
-
-            await foreach (var result in activeChannel.Reader.ReadAllAsync(CancellationToken.None))
-            {
-                yield return result;
-            }
-        }
-        finally
-        {
-            IsListening = false;
-            StopRecognition();
-            activeChannel = null;
-            logger.LogDebug("Browser speech recognition stopped");
-        }
+        await StartRecognitionAsync(lang, true);
+        IsListening = true;
+        logger.LogDebug("Browser speech recognition started");
     }
 
-    public async Task<string?> ListenUntilSilence(
-        SpeechRecognitionOptions? options = null,
-        CancellationToken cancellationToken = default)
+    public Task Stop()
     {
-        await BrowserJsModule.ImportAsync();
-        if (!IsRecognitionSupported())
-            return null;
+        if (!IsListening)
+            return Task.CompletedTask;
 
-        options ??= new SpeechRecognitionOptions();
-        var lang = options.Culture?.Name ?? "";
-
-        activeChannel = Channel.CreateUnbounded<SpeechRecognitionResult>(new UnboundedChannelOptions
-        {
-            SingleWriter = false,
-            SingleReader = true
-        });
-
-        try
-        {
-            await StartRecognitionAsync(lang, false);
-            IsListening = true;
-            logger.LogDebug("Browser speech recognition started (single)");
-
-            await using var reg = cancellationToken.Register(() =>
-            {
-                StopRecognition();
-                activeChannel?.Writer.TryComplete();
-            });
-
-            string? lastText = null;
-            await foreach (var result in activeChannel.Reader.ReadAllAsync(CancellationToken.None))
-            {
-                lastText = result.Text;
-                if (result.IsFinal)
-                    return result.Text;
-            }
-            return lastText;
-        }
-        finally
-        {
-            IsListening = false;
-            StopRecognition();
-            activeChannel = null;
-            logger.LogDebug("Browser speech recognition stopped");
-        }
+        IsListening = false;
+        keywordPattern = null;
+        StopRecognition();
+        activeInstance = null;
+        logger.LogDebug("Browser speech recognition stopped");
+        return Task.CompletedTask;
     }
 
     [JSImport("shinySpeech.isRecognitionSupported", "shiny-speech")]
@@ -136,18 +82,53 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
     [JSExport]
     public static void OnResult(string text, bool isFinal, float confidence)
     {
-        activeChannel?.Writer.TryWrite(new SpeechRecognitionResult(text, isFinal, confidence));
+        var instance = activeInstance;
+        if (instance == null)
+            return;
+
+        var result = new SpeechRecognitionResult(text, isFinal, confidence);
+        instance.ResultReceived?.Invoke(instance, result);
+
+        if (isFinal && keywordPattern != null)
+        {
+            var match = keywordPattern.Match(text);
+            if (match.Success)
+                instance.KeywordHeard?.Invoke(instance, match.Value);
+        }
     }
 
     [JSExport]
     public static void OnEnd()
     {
-        activeChannel?.Writer.TryComplete();
+        var instance = activeInstance;
+        if (instance == null)
+            return;
+
+        instance.IsListening = false;
+        activeInstance = null;
     }
 
     [JSExport]
     public static void OnError(string error)
     {
-        activeChannel?.Writer.TryComplete(new InvalidOperationException($"Speech recognition error: {error}"));
+        var instance = activeInstance;
+        if (instance == null)
+            return;
+
+        instance.Error?.Invoke(instance, new SpeechRecognitionError(
+            error,
+            new InvalidOperationException($"Speech recognition error: {error}")
+        ));
+    }
+
+    static Regex? BuildKeywordPattern(string[]? keywords)
+    {
+        if (keywords == null || keywords.Length == 0)
+            return null;
+
+        return new Regex(
+            @"\b(" + string.Join("|", keywords.Select(Regex.Escape)) + @")\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled
+        );
     }
 }

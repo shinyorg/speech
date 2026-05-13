@@ -56,49 +56,69 @@ public class MyService(ITextToSpeechService tts)
 
 ### Speech-to-Text
 
+The `ISpeechToTextService` uses a Start/Stop model with events, allowing multiple consumers to observe recognition results simultaneously.
+
 ```csharp
-public class MyService(ISpeechToTextService stt)
+public class MyService(ISpeechToTextService stt) : IDisposable
 {
-    public async Task ListenAsync(CancellationToken ct)
+    public async Task StartListeningAsync()
     {
         var access = await stt.RequestAccess();
         if (access != AccessState.Available)
             return;
 
-        // Check if already listening
-        if (stt.IsListening)
-            return;
+        // Subscribe to events
+        stt.ResultReceived += OnResult;
+        stt.KeywordHeard += OnKeyword;
+        stt.Error += OnError;
 
-        // Simple: wait for silence
-        var text = await stt.ListenUntilSilence(cancellationToken: ct);
-
-        // Streaming: get partial results
-        await foreach (var result in stt.ContinuousRecognize(cancellationToken: ct))
+        // Start listening (throws if already listening)
+        await stt.Start(new SpeechRecognitionOptions
         {
-            Console.WriteLine($"[{(result.IsFinal ? "FINAL" : "partial")}] {result.Text}");
-            if (result.IsFinal)
-                break;
-        }
+            Culture = CultureInfo.GetCultureInfo("en-US"),
+            SilenceTimeout = TimeSpan.FromSeconds(3),
+            Keywords = ["Yes", "No", "Maybe"]
+        });
     }
+
+    public async Task StopListeningAsync()
+    {
+        await stt.Stop(); // no-op if not listening
+        stt.ResultReceived -= OnResult;
+        stt.KeywordHeard -= OnKeyword;
+        stt.Error -= OnError;
+    }
+
+    void OnResult(object? sender, SpeechRecognitionResult result)
+        => Console.WriteLine($"[{(result.IsFinal ? "FINAL" : "partial")}] {result.Text}");
+
+    void OnKeyword(object? sender, string keyword)
+        => Console.WriteLine($"Keyword detected: {keyword}");
+
+    void OnError(object? sender, SpeechRecognitionError error)
+        => Console.WriteLine($"Error: {error.Message}");
+
+    public void Dispose() => StopListeningAsync().GetAwaiter().GetResult();
 }
 ```
 
-### Wake Word Listening
+### Extension Methods (Convenience)
 
 ```csharp
-// "Hey Siri" style — listens continuously until wake phrase is detected,
-// then captures everything spoken after it until silence
-var command = await stt.ListenWithWakeWord("Hey Computer", cancellationToken: ct);
-// User says: "Hey Computer, what's the weather" → returns "what's the weather"
-// User says: "Hey Computer" [pause] "what's the weather" → returns "what's the weather"
-```
+// Simple: wait for silence (starts and stops automatically)
+var text = await stt.ListenUntilSilence(cancellationToken: ct);
 
-### Keyword Listening
+// Wake word: "Hey Computer, do something" → returns "do something"
+var command = await stt.StatementAfterKeyword(["Hey Computer"], cancellationToken: ct);
 
-```csharp
-// Listens until one of the specified keywords is detected
-var answer = await stt.ListenForKeyword(["Yes", "No", "Maybe"], cancellationToken: ct);
-// User says: "I think yes" → returns "Yes"
+// Wait for a specific keyword (with optional timeout)
+var answer = await stt.WaitListenForKeywords(["Yes", "No"], timeout: TimeSpan.FromSeconds(30), cancellationToken: ct);
+
+// Continuous keyword stream
+await foreach (var keyword in stt.ListenForKeywords(["Up", "Down", "Left", "Right"], cancellationToken: ct))
+{
+    Console.WriteLine($"Direction: {keyword}");
+}
 ```
 
 ## Custom Cloud Provider
@@ -126,7 +146,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 
 | Platform | STT | TTS | Audio Capture | Audio Playback |
 |----------|-----|-----|---------------|----------------|
-| iOS 15+ | SFSpeechRecognizer | AVSpeechSynthesizer | AVAudioEngine | AVAudioPlayer |
+| iOS 15+ (incl. CarPlay) | SFSpeechRecognizer | AVSpeechSynthesizer | AVAudioEngine | AVAudioPlayer |
 | Android 26+ | SpeechRecognizer | Android TTS | AudioRecord | MediaPlayer |
 | Windows 10 19041+ | Windows.Media.SpeechRecognition | Windows.Media.SpeechSynthesis | AudioGraph | MediaPlayer |
 | Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` |

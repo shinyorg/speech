@@ -112,6 +112,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         if (IsListening)
         {
             listenCts?.Cancel();
+            await stt.Stop();
             return;
         }
 
@@ -174,22 +175,19 @@ public partial class SpeechToTextViewModel : ObservableObject
         };
 
         var accumulated = "";
-        var lastFinal = "";
+        var tcs = new TaskCompletionSource();
 
-        await foreach (var result in stt.ContinuousRecognize(options, ct))
+        void OnResult(object? sender, SpeechRecognitionResult result)
         {
             if (result.IsFinal)
             {
-                // Append final segment to accumulated text
                 if (accumulated.Length > 0)
                     accumulated += " ";
                 accumulated += result.Text;
-                lastFinal = accumulated;
                 RecognizedText = accumulated;
             }
             else
             {
-                // Show accumulated finals + current partial
                 RecognizedText = accumulated.Length > 0
                     ? accumulated + " " + result.Text
                     : result.Text;
@@ -204,6 +202,24 @@ public partial class SpeechToTextViewModel : ObservableObject
             StatusText = result.IsFinal
                 ? "Listening (continuous) — final segment received"
                 : "Listening (continuous) — partial...";
+        }
+
+        stt.ResultReceived += OnResult;
+        await using var reg = ct.Register(() =>
+        {
+            stt.ResultReceived -= OnResult;
+            tcs.TrySetResult();
+        });
+
+        try
+        {
+            await stt.Start(options);
+            await tcs.Task;
+        }
+        finally
+        {
+            stt.ResultReceived -= OnResult;
+            await stt.Stop();
         }
 
         StatusText = "Continuous listening ended";
@@ -244,7 +260,11 @@ public partial class SpeechToTextViewModel : ObservableObject
             PreferOnDevice = PreferOnDevice
         };
 
-        var result = await stt.ListenWithWakeWord(WakePhrase, options, ct);
+        var result = await stt.StatementAfterKeyword(
+            [WakePhrase],
+            options,
+            ct
+        );
 
         if (result != null)
         {
@@ -272,7 +292,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             PreferOnDevice = PreferOnDevice
         };
 
-        var result = await stt.ListenForKeyword(keywords, options, ct);
+        var result = await stt.WaitListenForKeywords(keywords, options: options, cancellationToken: ct);
 
         if (result != null)
         {

@@ -73,7 +73,7 @@
     <div class="btn-row" style="margin-bottom:16px">
         @if (isListening)
         {
-            <button class="btn btn-danger" @onclick="StopListening">Stop Listening</button>
+            <button class="btn btn-danger" @onclick="StopListeningAsync">Stop Listening</button>
         }
         else
         {
@@ -283,8 +283,9 @@ else
         };
 
         var accumulated = "";
+        var tcs = new TaskCompletionSource();
 
-        await foreach (var result in SpeechToText.ContinuousRecognize(options, ct))
+        void OnResult(object? sender, SpeechRecognitionResult result)
         {
             if (result.IsFinal)
             {
@@ -307,7 +308,25 @@ else
                 ? "Listening (continuous) -- final segment received"
                 : "Listening (continuous) -- partial...";
 
-            StateHasChanged();
+            InvokeAsync(StateHasChanged);
+        }
+
+        SpeechToText.ResultReceived += OnResult;
+        await using var reg = ct.Register(() =>
+        {
+            SpeechToText.ResultReceived -= OnResult;
+            tcs.TrySetResult();
+        });
+
+        try
+        {
+            await SpeechToText.Start(options);
+            await tcs.Task;
+        }
+        finally
+        {
+            SpeechToText.ResultReceived -= OnResult;
+            await SpeechToText.Stop();
         }
 
         sttStatus = "Continuous listening ended";
@@ -336,9 +355,10 @@ else
         }
     }
 
-    void StopListening()
+    async Task StopListeningAsync()
     {
         listenCts?.Cancel();
+        await SpeechToText.Stop();
     }
 
     async Task ListenWakeWordAsync(CancellationToken ct)
@@ -351,7 +371,11 @@ else
             Culture = new CultureInfo(selectedLocale)
         };
 
-        var result = await SpeechToText.ListenWithWakeWord(wakePhrase, options, ct);
+        var result = await SpeechToText.StatementAfterKeyword(
+            [wakePhrase],
+            options,
+            ct
+        );
 
         if (result != null)
         {
@@ -377,7 +401,7 @@ else
             Culture = new CultureInfo(selectedLocale)
         };
 
-        var result = await SpeechToText.ListenForKeyword(keywords, options, ct);
+        var result = await SpeechToText.WaitListenForKeywords(keywords, options: options, cancellationToken: ct);
 
         if (result != null)
         {

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 namespace Shiny.Speech;
 
 public interface ISpeechToTextService
@@ -8,13 +6,10 @@ public interface ISpeechToTextService
     bool IsListening { get; }
     Task<AccessState> RequestAccess();
 
-    IAsyncEnumerable<SpeechRecognitionResult> ContinuousRecognize(
-        SpeechRecognitionOptions? options = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default
-    );
+    Task Start(SpeechRecognitionOptions? options = null);
+    Task Stop();
 
-    Task<string?> ListenUntilSilence(
-        SpeechRecognitionOptions? options = null,
-        CancellationToken cancellationToken = default
-    );
+    event EventHandler<SpeechRecognitionResult> ResultReceived;
+    event EventHandler<string> KeywordHeard;
+    event EventHandler<SpeechRecognitionError> Error;
 }

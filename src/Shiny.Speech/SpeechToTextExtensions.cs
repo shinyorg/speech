@@ -1,90 +1,204 @@
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 
 namespace Shiny.Speech;
 
 public static class SpeechToTextExtensions
 {
-    public static async Task<string?> ListenWithWakeWord(
+    public static async Task<string?> ListenUntilSilence(
         this ISpeechToTextService service,
-        string wakePhrase,
         SpeechRecognitionOptions? options = null,
         CancellationToken cancellationToken = default
     )
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(wakePhrase);
+        var tcs = new TaskCompletionSource<string?>();
+        string? lastText = null;
 
-        var wakeDetected = false;
-
-        while (!cancellationToken.IsCancellationRequested)
+        void OnResult(object? sender, SpeechRecognitionResult result)
         {
-            await foreach (var result in service.ContinuousRecognize(options, cancellationToken))
-            {
-                var idx = result.Text.IndexOf(wakePhrase, StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0)
-                {
-                    wakeDetected = true;
-                    var afterWake = result.Text[(idx + wakePhrase.Length)..].Trim();
-
-                    if (!string.IsNullOrWhiteSpace(afterWake) && result.IsFinal)
-                        return afterWake;
-                }
-
-                if (wakeDetected && result.IsFinal)
-                {
-                    // Wake phrase was detected in a previous partial but final result
-                    // has no content after it - user said "Hey Siri" then paused.
-                    // Break inner loop to restart listening for the actual command.
-                    break;
-                }
-            }
-
-            if (wakeDetected)
-            {
-                // Wake word was said, now capture the next utterance as the command
-                var command = await service.ListenUntilSilence(options, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(command))
-                    return command;
-
-                // If they stayed silent, reset and listen for wake word again
-                wakeDetected = false;
-            }
+            lastText = result.Text;
+            if (result.IsFinal)
+                tcs.TrySetResult(result.Text);
         }
 
-        return null;
+        void OnError(object? sender, SpeechRecognitionError error)
+        {
+            tcs.TrySetException(error.Exception ?? new InvalidOperationException(error.Message));
+        }
+
+        service.ResultReceived += OnResult;
+        service.Error += OnError;
+
+        await using var reg = cancellationToken.Register(() => tcs.TrySetResult(lastText));
+
+        try
+        {
+            if (!service.IsListening)
+                await service.Start(options);
+
+            return await tcs.Task;
+        }
+        finally
+        {
+            service.ResultReceived -= OnResult;
+            service.Error -= OnError;
+            await service.Stop();
+        }
     }
 
-    public static async Task<string?> ListenForKeyword(
+    public static async Task<string?> StatementAfterKeyword(
         this ISpeechToTextService service,
-        IEnumerable<string> keywords,
+        string[] keywords,
         SpeechRecognitionOptions? options = null,
         CancellationToken cancellationToken = default
     )
     {
-        var keywordList = keywords?.ToArray() ?? throw new ArgumentNullException(nameof(keywords));
-        if (keywordList.Length == 0)
+        ArgumentNullException.ThrowIfNull(keywords);
+        if (keywords.Length == 0)
             throw new ArgumentException("At least one keyword is required.", nameof(keywords));
 
-        // Map matched text back to original-cased keyword
-        var keywordLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var k in keywordList)
-            keywordLookup.TryAdd(k, k);
+        options = (options ?? new SpeechRecognitionOptions()) with { Keywords = keywords };
 
-        // Single compiled regex with alternation for all keywords
-        var pattern = new Regex(
-            @"\b(" + string.Join("|", keywordList.Select(Regex.Escape)) + @")\b",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled
-        );
+        var tcs = new TaskCompletionSource<string?>();
+        var keywordHeard = false;
 
-        while (!cancellationToken.IsCancellationRequested)
+        void OnKeyword(object? sender, string keyword) => keywordHeard = true;
+
+        void OnResult(object? sender, SpeechRecognitionResult result)
         {
-            await foreach (var result in service.ContinuousRecognize(options, cancellationToken))
-            {
-                var match = pattern.Match(result.Text);
-                if (match.Success && keywordLookup.TryGetValue(match.Value, out var keyword))
-                    return keyword;
-            }
+            if (!keywordHeard || !result.IsFinal)
+                return;
+
+            var text = result.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+                tcs.TrySetResult(text);
         }
 
-        return null;
+        void OnError(object? sender, SpeechRecognitionError error)
+        {
+            tcs.TrySetException(error.Exception ?? new InvalidOperationException(error.Message));
+        }
+
+        service.KeywordHeard += OnKeyword;
+        service.ResultReceived += OnResult;
+        service.Error += OnError;
+
+        await using var reg = cancellationToken.Register(() => tcs.TrySetResult(null));
+
+        try
+        {
+            if (!service.IsListening)
+                await service.Start(options);
+
+            return await tcs.Task;
+        }
+        finally
+        {
+            service.KeywordHeard -= OnKeyword;
+            service.ResultReceived -= OnResult;
+            service.Error -= OnError;
+            await service.Stop();
+        }
+    }
+
+    public static async Task<string?> WaitListenForKeywords(
+        this ISpeechToTextService service,
+        string[] keywords,
+        TimeSpan? timeout = null,
+        SpeechRecognitionOptions? options = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(keywords);
+        if (keywords.Length == 0)
+            throw new ArgumentException("At least one keyword is required.", nameof(keywords));
+
+        options = (options ?? new SpeechRecognitionOptions()) with { Keywords = keywords };
+
+        var tcs = new TaskCompletionSource<string?>();
+
+        void OnKeyword(object? sender, string keyword) => tcs.TrySetResult(keyword);
+
+        void OnError(object? sender, SpeechRecognitionError error)
+        {
+            tcs.TrySetException(error.Exception ?? new InvalidOperationException(error.Message));
+        }
+
+        service.KeywordHeard += OnKeyword;
+        service.Error += OnError;
+
+        using var cts = timeout.HasValue
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+
+        if (timeout.HasValue)
+            cts!.CancelAfter(timeout.Value);
+
+        var effectiveToken = cts?.Token ?? cancellationToken;
+        await using var reg = effectiveToken.Register(() => tcs.TrySetResult(null));
+
+        try
+        {
+            if (!service.IsListening)
+                await service.Start(options);
+
+            return await tcs.Task;
+        }
+        finally
+        {
+            service.KeywordHeard -= OnKeyword;
+            service.Error -= OnError;
+            await service.Stop();
+        }
+    }
+
+    public static async IAsyncEnumerable<string> ListenForKeywords(
+        this ISpeechToTextService service,
+        string[] keywords,
+        SpeechRecognitionOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(keywords);
+        if (keywords.Length == 0)
+            throw new ArgumentException("At least one keyword is required.", nameof(keywords));
+
+        options = (options ?? new SpeechRecognitionOptions()) with { Keywords = keywords };
+
+        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+        {
+            SingleWriter = false,
+            SingleReader = true
+        });
+
+        void OnKeyword(object? sender, string keyword) => channel.Writer.TryWrite(keyword);
+
+        void OnError(object? sender, SpeechRecognitionError error)
+        {
+            channel.Writer.TryComplete(error.Exception ?? new InvalidOperationException(error.Message));
+        }
+
+        service.KeywordHeard += OnKeyword;
+        service.Error += OnError;
+
+        try
+        {
+            if (!service.IsListening)
+                await service.Start(options);
+
+            await using var reg = cancellationToken.Register(() => channel.Writer.TryComplete());
+
+            await foreach (var keyword in channel.Reader.ReadAllAsync(CancellationToken.None))
+            {
+                yield return keyword;
+            }
+        }
+        finally
+        {
+            service.KeywordHeard -= OnKeyword;
+            service.Error -= OnError;
+            await service.Stop();
+        }
     }
 }
