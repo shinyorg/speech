@@ -15,15 +15,30 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
     {
         await StopAsync();
 
+        var header = new byte[16];
+        var headerRead = 0;
+        while (headerRead < header.Length)
+        {
+            var n = await audioStream.ReadAsync(header.AsMemory(headerRead, header.Length - headerRead), cancellationToken);
+            if (n == 0)
+                break;
+            headerRead += n;
+        }
+
+        var extension = SniffExtension(header, headerRead);
         var tempFile = Path.Combine(
             Android.App.Application.Context.CacheDir!.AbsolutePath,
-            $"tts_{Guid.NewGuid()}.mp3"
+            $"tts_{Guid.NewGuid()}{extension}"
         );
 
         try
         {
             await using (var fs = File.Create(tempFile))
+            {
+                if (headerRead > 0)
+                    await fs.WriteAsync(header.AsMemory(0, headerRead), cancellationToken);
                 await audioStream.CopyToAsync(fs, cancellationToken);
+            }
 
             mediaPlayer = new MediaPlayer();
             playbackTcs = new TaskCompletionSource();
@@ -51,6 +66,23 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             if (File.Exists(tempFile))
                 File.Delete(tempFile);
         }
+    }
+
+    static string SniffExtension(byte[] header, int length)
+    {
+        if (length >= 12 && header[4] == (byte)'f' && header[5] == (byte)'t' && header[6] == (byte)'y' && header[7] == (byte)'p')
+            return ".m4a";
+
+        if (length >= 4 && header[0] == (byte)'R' && header[1] == (byte)'I' && header[2] == (byte)'F' && header[3] == (byte)'F')
+            return ".wav";
+
+        if (length >= 4 && header[0] == (byte)'O' && header[1] == (byte)'g' && header[2] == (byte)'g' && header[3] == (byte)'S')
+            return ".ogg";
+
+        if (length >= 4 && header[0] == (byte)'f' && header[1] == (byte)'L' && header[2] == (byte)'a' && header[3] == (byte)'C')
+            return ".flac";
+
+        return ".mp3";
     }
 
     void OnCompletion(object? sender, EventArgs e)
