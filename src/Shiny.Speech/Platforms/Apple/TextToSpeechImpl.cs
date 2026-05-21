@@ -79,9 +79,14 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         try
         {
 #if !MACOS
-            // Ensure audio session is set for playback (STT may have left it on Record)
+            // If STT (or another component) has already configured the session for input+output
+            // — i.e. PlayAndRecord — leave the category alone. Switching to Playback-only would
+            // suspend the microphone for the duration of TTS and break any concurrent interruption
+            // listening. Always reactivate the session in case the previous owner deactivated it.
             var audioSession = AVAudioSession.SharedInstance();
-            audioSession.SetCategory(AVAudioSessionCategory.Playback, (AVAudioSessionCategoryOptions)0, out _);
+            var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
+            if (audioSession.Category != playAndRecord)
+                audioSession.SetCategory(AVAudioSessionCategory.Playback, (AVAudioSessionCategoryOptions)0, out _);
             audioSession.SetActive(true, out _);
 #endif
 

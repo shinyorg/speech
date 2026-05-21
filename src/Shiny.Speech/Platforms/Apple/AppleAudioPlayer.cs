@@ -24,8 +24,13 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
             throw new InvalidOperationException("Failed to create audio player from data");
 
 #if !MACOS
+        // If something else (e.g. an active STT session) has already configured PlayAndRecord,
+        // leave it alone. Switching to Playback-only would suspend the microphone and break any
+        // concurrent recognition. Always reactivate the session in case it was deactivated.
         var session = AVAudioSession.SharedInstance();
-        session.SetCategory(AVAudioSessionCategory.Playback, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
+        var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
+        if (session.Category != playAndRecord)
+            session.SetCategory(AVAudioSessionCategory.Playback, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
         session.SetActive(true, out _);
 #endif
 
