@@ -19,6 +19,13 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
     TimeSpan silenceTimeout;
     bool preferOnDevice;
 
+    // Dedup state — suppress KeywordHeard re-fires from trailing-audio carry-over.
+    // SFSpeechRecognizer can deliver a final result with the previous best-guess text
+    // when a re-armed task receives only silence or the tail of the prior utterance.
+    string? lastKeywordFinalText;
+    DateTime lastKeywordFinalTime;
+    static readonly TimeSpan KeywordDedupWindow = TimeSpan.FromSeconds(3);
+
     public bool IsSupported =>
         SFSpeechRecognizer.AuthorizationStatus != SFSpeechRecognizerAuthorizationStatus.Restricted;
 
@@ -76,6 +83,8 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             this.keywordPattern = BuildKeywordPattern(options.Keywords);
             this.silenceTimeout = options.SilenceTimeout;
             this.preferOnDevice = options.PreferOnDevice;
+            this.lastKeywordFinalText = null;
+            this.lastKeywordFinalTime = default;
 
             var locale = options.Culture != null
                 ? new NSLocale(options.Culture.Name)
@@ -227,8 +236,12 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             if (isFinal && this.keywordPattern != null)
             {
                 var match = this.keywordPattern.Match(text);
-                if (match.Success)
+                if (match.Success && !IsDuplicateKeywordFinal(text))
+                {
+                    this.lastKeywordFinalText = text.Trim();
+                    this.lastKeywordFinalTime = DateTime.UtcNow;
                     KeywordHeard?.Invoke(this, match.Value);
+                }
             }
 
             if (isFinal)
@@ -266,6 +279,15 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             logger.LogDebug("Silence timeout reached, ending audio");
             this.request?.EndAudio();
         }, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    bool IsDuplicateKeywordFinal(string text)
+    {
+        if (this.lastKeywordFinalText == null)
+            return false;
+        if (!string.Equals(text.Trim(), this.lastKeywordFinalText, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return DateTime.UtcNow - this.lastKeywordFinalTime < KeywordDedupWindow;
     }
 
     static Regex? BuildKeywordPattern(string[]? keywords)

@@ -27,7 +27,9 @@ public static class MauiProgram
         // To use Azure cloud speech instead:
         // builder.Services.AddAzureSpeech("your-key", "your-region");
 
-        // To use ElevenLabs for TTS:
+        // To use ElevenLabs instead:
+        // builder.Services.AddElevenLabsSpeech("");
+
         // builder.Services.AddElevenLabsTextToSpeech("your-api-key");
 
 #if DEBUG

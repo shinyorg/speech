@@ -18,6 +18,13 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
     Regex? keywordPattern;
     AudioManager? audioManager;
 
+    // Dedup state — Android SpeechRecognizer is single-shot, and the StartListening
+    // restart cycle can produce a final result echoing the prior utterance when the
+    // user is actually silent. Suppress same-text re-fires within a short window.
+    string? lastKeywordFinalText;
+    DateTime lastKeywordFinalTime;
+    static readonly TimeSpan KeywordDedupWindow = TimeSpan.FromSeconds(3);
+
     public bool IsSupported =>
         Android.Speech.SpeechRecognizer.IsRecognitionAvailable(Android.App.Application.Context);
 
@@ -52,6 +59,8 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
 
         options ??= new SpeechRecognitionOptions();
         keywordPattern = BuildKeywordPattern(options.Keywords);
+        lastKeywordFinalText = null;
+        lastKeywordFinalTime = default;
 
         var tcs = new TaskCompletionSource();
         handler = new Handler(Looper.MainLooper!);
@@ -65,8 +74,12 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
                 if (result.IsFinal && keywordPattern != null)
                 {
                     var match = keywordPattern.Match(result.Text);
-                    if (match.Success)
+                    if (match.Success && !IsDuplicateKeywordFinal(result.Text))
+                    {
+                        lastKeywordFinalText = result.Text.Trim();
+                        lastKeywordFinalTime = DateTime.UtcNow;
                         KeywordHeard?.Invoke(this, match.Value);
+                    }
                 }
             },
             onError: error =>
@@ -154,6 +167,15 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
         audioManager = null;
         logger.LogDebug("Android speech recognition stopped");
         return tcs.Task;
+    }
+
+    bool IsDuplicateKeywordFinal(string text)
+    {
+        if (lastKeywordFinalText == null)
+            return false;
+        if (!string.Equals(text.Trim(), lastKeywordFinalText, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return DateTime.UtcNow - lastKeywordFinalTime < KeywordDedupWindow;
     }
 
     static Regex? BuildKeywordPattern(string[]? keywords)

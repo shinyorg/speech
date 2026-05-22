@@ -11,6 +11,10 @@ public class WindowsAudioPlayer(ILogger<WindowsAudioPlayer> logger) : IAudioPlay
     TaskCompletionSource? playbackTcs;
 
     public bool IsPlaying => mediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
+    public bool IsPlayerAnalysisSupported => false;
+#pragma warning disable CS0067
+    public event EventHandler<double>? AudioLevelChanged;
+#pragma warning restore CS0067
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {

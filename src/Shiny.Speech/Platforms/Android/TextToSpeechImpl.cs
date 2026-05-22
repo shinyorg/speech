@@ -13,6 +13,8 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
     public bool IsSupported => true;
     public bool IsSpeaking => tts?.IsSpeaking ?? false;
+    public bool IsPlayerAnalysisSupported => true;
+    public event EventHandler<double>? AudioLevelChanged;
 
     async Task EnsureInitializedAsync()
     {
@@ -99,7 +101,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
         speakTcs = new TaskCompletionSource();
         var utteranceId = Guid.NewGuid().ToString();
-        var listener = new UtteranceListener(speakTcs, logger);
+        var listener = new UtteranceListener(speakTcs, logger, level => AudioLevelChanged?.Invoke(this, level));
 
         // TTS operations must run on main thread
         new Android.OS.Handler(Android.OS.Looper.MainLooper!).Post(() =>
@@ -180,7 +182,11 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         }
     }
 
-    sealed class UtteranceListener(TaskCompletionSource tcs, ILogger logger) : UtteranceProgressListener
+    sealed class UtteranceListener(
+        TaskCompletionSource tcs,
+        ILogger logger,
+        Action<double> onLevel
+    ) : UtteranceProgressListener
     {
         public override void OnDone(string? utteranceId) => tcs.TrySetResult();
 
@@ -192,5 +198,24 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
         public override void OnStart(string? utteranceId)
             => logger.LogDebug("TTS utterance started: {UtteranceId}", utteranceId);
+
+        public override void OnAudioAvailable(string? utteranceId, byte[]? audio)
+        {
+            if (audio == null || audio.Length < 2)
+                return;
+
+            // Android TTS delivers 16-bit signed PCM little-endian. Compute RMS into 0-1.
+            double sumSquares = 0;
+            var samples = audio.Length / 2;
+            for (var i = 0; i < samples; i++)
+            {
+                var sample = (short)(audio[i * 2] | (audio[i * 2 + 1] << 8));
+                var s = sample / 32768.0;
+                sumSquares += s * s;
+            }
+
+            var rms = Math.Sqrt(sumSquares / samples);
+            onLevel(Math.Clamp(rms, 0.0, 1.0));
+        }
     }
 }

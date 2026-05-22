@@ -13,6 +13,10 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
     public bool IsSupported => true;
     public bool IsSpeaking => mediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
+    public bool IsPlayerAnalysisSupported => false;
+#pragma warning disable CS0067
+    public event EventHandler<double>? AudioLevelChanged;
+#pragma warning restore CS0067
 
     public Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {

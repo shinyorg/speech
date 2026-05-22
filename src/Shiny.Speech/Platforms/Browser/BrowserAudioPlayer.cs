@@ -10,6 +10,10 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
     TaskCompletionSource? playTcs;
 
     public bool IsPlaying => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsPlaying();
+    public bool IsPlayerAnalysisSupported => false;
+#pragma warning disable CS0067
+    public event EventHandler<double>? AudioLevelChanged;
+#pragma warning restore CS0067
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {

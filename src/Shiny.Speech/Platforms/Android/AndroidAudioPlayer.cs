@@ -1,4 +1,5 @@
 using Android.Media;
+using Android.Media.Audiofx;
 using Microsoft.Extensions.Logging;
 using Stream = System.IO.Stream;
 
@@ -7,9 +8,12 @@ namespace Shiny.Speech;
 public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlayer
 {
     MediaPlayer? mediaPlayer;
+    Visualizer? visualizer;
     TaskCompletionSource? playbackTcs;
 
     public bool IsPlaying => mediaPlayer?.IsPlaying ?? false;
+    public bool IsPlayerAnalysisSupported => true;
+    public event EventHandler<double>? AudioLevelChanged;
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
@@ -56,6 +60,7 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             });
 
             mediaPlayer.Start();
+            AttachVisualizer(mediaPlayer.AudioSessionId);
             logger.LogDebug("Android audio playback started");
 
             await playbackTcs.Task;
@@ -63,8 +68,48 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         }
         finally
         {
+            DetachVisualizer();
             if (File.Exists(tempFile))
                 File.Delete(tempFile);
+        }
+    }
+
+    void AttachVisualizer(int sessionId)
+    {
+        DetachVisualizer();
+        try
+        {
+            visualizer = new Visualizer(sessionId);
+            var sizeRange = Visualizer.GetCaptureSizeRange();
+            if (sizeRange != null && sizeRange.Length > 0)
+                visualizer.SetCaptureSize(sizeRange[0]);
+
+            var listener = new WaveformListener(level => AudioLevelChanged?.Invoke(this, level));
+            visualizer.SetDataCaptureListener(listener, Visualizer.MaxCaptureRate / 2, true, false);
+            visualizer.SetEnabled(true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to attach Android Visualizer; audio levels will not be emitted");
+            visualizer?.Release();
+            visualizer = null;
+        }
+    }
+
+    void DetachVisualizer()
+    {
+        if (visualizer != null)
+        {
+            try
+            {
+                visualizer.SetEnabled(false);
+                visualizer.Release();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Error releasing Android Visualizer");
+            }
+            visualizer = null;
         }
     }
 
@@ -96,6 +141,7 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
 
     public Task StopAsync()
     {
+        DetachVisualizer();
         if (mediaPlayer != null)
         {
             if (mediaPlayer.IsPlaying)
@@ -112,9 +158,33 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
 
     public ValueTask DisposeAsync()
     {
+        DetachVisualizer();
         mediaPlayer?.Release();
         mediaPlayer?.Dispose();
         mediaPlayer = null;
         return ValueTask.CompletedTask;
+    }
+
+    sealed class WaveformListener(Action<double> onLevel) : Java.Lang.Object, Visualizer.IOnDataCaptureListener
+    {
+        public void OnFftDataCapture(Visualizer? visualizer, byte[]? fft, int samplingRate)
+        {
+        }
+
+        public void OnWaveFormDataCapture(Visualizer? visualizer, byte[]? waveform, int samplingRate)
+        {
+            if (waveform == null || waveform.Length == 0)
+                return;
+
+            // Visualizer waveform is 8-bit unsigned PCM centered at 128.
+            double sumSquares = 0;
+            for (var i = 0; i < waveform.Length; i++)
+            {
+                var s = (waveform[i] - 128) / 128.0;
+                sumSquares += s * s;
+            }
+            var rms = Math.Sqrt(sumSquares / waveform.Length);
+            onLevel(Math.Clamp(rms, 0.0, 1.0));
+        }
     }
 }

@@ -42,6 +42,7 @@ public static class SpeechServiceCollectionExtensions
 #if APPLE
         services.TryAddTransient<IAudioSource, AppleAudioSource>();
 #elif ANDROID
+        services.TryAddSingleton<ActivityProvider>();
         services.TryAddTransient<IAudioSource, AndroidAudioSource>();
 #elif WINDOWS
         services.TryAddTransient<IAudioSource, WindowsAudioSource>();
