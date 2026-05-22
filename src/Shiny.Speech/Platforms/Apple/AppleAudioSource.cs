@@ -42,7 +42,12 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
 
 #if !MACOS
         var audioSession = AVAudioSession.SharedInstance();
-        audioSession.SetCategory(AVAudioSessionCategory.Record, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
+        audioSession.SetCategory(
+            AVAudioSessionCategory.Record,
+            AVAudioSessionCategoryOptions.AllowBluetooth | AVAudioSessionCategoryOptions.AllowBluetoothA2DP,
+            out _
+        );
+        audioSession.SetMode(AVAudioSessionMode.VoiceChat.GetConstant()!, out _);
         audioSession.SetActive(true, out _);
 #endif
 

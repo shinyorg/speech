@@ -12,6 +12,8 @@ public class AzureSpeechToTextProvider(
     ILogger<AzureSpeechToTextProvider> logger
 ) : ISpeechToTextProvider
 {
+    public event EventHandler<SpeechRecognitionError>? Error;
+
     public async IAsyncEnumerable<SpeechRecognitionResult> RecognizeAsync(
         Stream audioStream,
         SpeechRecognitionOptions? options = null,
@@ -57,12 +59,9 @@ public class AzureSpeechToTextProvider(
             if (e.Reason == CancellationReason.Error)
             {
                 logger.LogError("Azure STT canceled with error: {ErrorCode} {ErrorDetails}", e.ErrorCode, e.ErrorDetails);
-                channel.Writer.TryComplete(new InvalidOperationException($"Azure STT error: {e.ErrorDetails}"));
+                Error?.Invoke(this, new SpeechRecognitionError($"Azure STT error {e.ErrorCode}: {e.ErrorDetails}"));
             }
-            else
-            {
-                channel.Writer.TryComplete();
-            }
+            channel.Writer.TryComplete();
         };
 
         await recognizer.StartContinuousRecognitionAsync();

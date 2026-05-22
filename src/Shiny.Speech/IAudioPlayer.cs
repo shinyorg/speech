@@ -19,4 +19,15 @@ public interface IAudioPlayer : IAsyncDisposable
     /// Whether audio is currently playing.
     /// </summary>
     bool IsPlaying { get; }
+
+    /// <summary>
+    /// True when the platform can emit <see cref="AudioLevelChanged"/> samples during playback.
+    /// </summary>
+    bool IsPlayerAnalysisSupported { get; }
+
+    /// <summary>
+    /// Fires periodically during playback with the current output level normalized to 0.0 - 1.0.
+    /// Only fires on platforms where <see cref="IsPlayerAnalysisSupported"/> is true.
+    /// </summary>
+    event EventHandler<double>? AudioLevelChanged;
 }

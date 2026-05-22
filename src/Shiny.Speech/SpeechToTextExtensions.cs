@@ -30,7 +30,17 @@ public static class SpeechToTextExtensions
         service.ResultReceived += OnResult;
         service.Error += OnError;
 
-        await using var reg = cancellationToken.Register(() => tcs.TrySetResult(lastText));
+        // On cancellation, drain via Stop (which fires the final ResultReceived for
+        // one-shot providers like ElevenLabs Scribe). If no final ever arrives, fall
+        // back to whatever partial text we accumulated.
+        await using var reg = cancellationToken.Register(() =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await service.Stop(); } catch { }
+                tcs.TrySetResult(lastText);
+            });
+        });
 
         try
         {
@@ -41,9 +51,9 @@ public static class SpeechToTextExtensions
         }
         finally
         {
+            await service.Stop();
             service.ResultReceived -= OnResult;
             service.Error -= OnError;
-            await service.Stop();
         }
     }
 
@@ -84,7 +94,14 @@ public static class SpeechToTextExtensions
         service.ResultReceived += OnResult;
         service.Error += OnError;
 
-        await using var reg = cancellationToken.Register(() => tcs.TrySetResult(null));
+        await using var reg = cancellationToken.Register(() =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await service.Stop(); } catch { }
+                tcs.TrySetResult(null);
+            });
+        });
 
         try
         {
@@ -95,10 +112,10 @@ public static class SpeechToTextExtensions
         }
         finally
         {
+            await service.Stop();
             service.KeywordHeard -= OnKeyword;
             service.ResultReceived -= OnResult;
             service.Error -= OnError;
-            await service.Stop();
         }
     }
 
@@ -136,7 +153,14 @@ public static class SpeechToTextExtensions
             cts!.CancelAfter(timeout.Value);
 
         var effectiveToken = cts?.Token ?? cancellationToken;
-        await using var reg = effectiveToken.Register(() => tcs.TrySetResult(null));
+        await using var reg = effectiveToken.Register(() =>
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await service.Stop(); } catch { }
+                tcs.TrySetResult(null);
+            });
+        });
 
         try
         {
@@ -147,9 +171,9 @@ public static class SpeechToTextExtensions
         }
         finally
         {
+            await service.Stop();
             service.KeywordHeard -= OnKeyword;
             service.Error -= OnError;
-            await service.Stop();
         }
     }
 

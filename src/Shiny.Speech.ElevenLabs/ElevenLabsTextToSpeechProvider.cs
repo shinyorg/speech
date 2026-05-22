@@ -61,7 +61,7 @@ public class ElevenLabsTextToSpeechProvider(
         var requestBody = new TtsRequest
         {
             Text = text,
-            ModelId = config.ModelId,
+            ModelId = config.TextToSpeechModel,
             VoiceSettings = new VoiceSettings
             {
                 Stability = 0.5f,

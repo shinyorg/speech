@@ -205,10 +205,17 @@ public partial class SpeechToTextViewModel : ObservableObject
         }
 
         stt.ResultReceived += OnResult;
+
+        // On cancel, drain via Stop so one-shot providers (e.g. ElevenLabs Scribe)
+        // can deliver their final ResultReceived before we unsubscribe. Don't
+        // unhook OnResult here — that happens in the finally after Stop completes.
         await using var reg = ct.Register(() =>
         {
-            stt.ResultReceived -= OnResult;
-            tcs.TrySetResult();
+            _ = Task.Run(async () =>
+            {
+                try { await stt.Stop(); } catch { }
+                tcs.TrySetResult();
+            });
         });
 
         try
@@ -218,8 +225,8 @@ public partial class SpeechToTextViewModel : ObservableObject
         }
         finally
         {
-            stt.ResultReceived -= OnResult;
             await stt.Stop();
+            stt.ResultReceived -= OnResult;
         }
 
         StatusText = "Continuous listening ended";

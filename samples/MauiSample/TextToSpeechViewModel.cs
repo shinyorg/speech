@@ -21,7 +21,17 @@ public partial class TextToSpeechViewModel : ObservableObject, IPageLifecycleAwa
             .ToList();
         cultures.Insert(0, CultureInfo.InvariantCulture); // "All" option
         AvailableLocales = cultures;
+
+        IsAudioLevelSupported = tts.IsPlayerAnalysisSupported;
+        AudioLevelStatus = IsAudioLevelSupported
+            ? "VU meter active"
+            : "VU meter not supported on this platform / TTS";
+
+        tts.AudioLevelChanged += OnAudioLevelChanged;
     }
+
+    void OnAudioLevelChanged(object? sender, double level)
+        => MainThread.BeginInvokeOnMainThread(() => AudioLevel = level);
 
     public List<CultureInfo> AvailableLocales { get; }
 
@@ -56,6 +66,18 @@ public partial class TextToSpeechViewModel : ObservableObject, IPageLifecycleAwa
 
     [ObservableProperty]
     string statusText = "Ready";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AudioLevelPercent))]
+    double audioLevel;
+
+    public string AudioLevelPercent => $"{AudioLevel:P0}";
+
+    [ObservableProperty]
+    bool isAudioLevelSupported;
+
+    [ObservableProperty]
+    string audioLevelStatus = string.Empty;
 
     public string VoiceCountText => $"Voice ({Voices.Count} available)";
 
@@ -117,8 +139,16 @@ public partial class TextToSpeechViewModel : ObservableObject, IPageLifecycleAwa
         {
             StatusText = $"Error: {ex.Message}";
         }
+        finally
+        {
+            AudioLevel = 0;
+        }
     }
 
     [RelayCommand]
-    async Task StopAsync() => await tts.StopAsync();
+    async Task StopAsync()
+    {
+        await tts.StopAsync();
+        AudioLevel = 0;
+    }
 }

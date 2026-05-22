@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFrameworks>$(BaseTargetFramework)</TargetFrameworks>
+        <TargetFrameworks>$(PlatformTargets)</TargetFrameworks>
         <RootNamespace>Shiny.Speech.MicrosoftAI</RootNamespace>
         <NoWarn>$(NoWarn);MEAI001</NoWarn>
     </PropertyGroup>

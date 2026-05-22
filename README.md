@@ -9,7 +9,7 @@ Cross-platform speech services for .NET MAUI and Blazor WebAssembly — speech-t
 | **Shiny.Speech** | Core interfaces + native platform implementations (STT, TTS, audio capture, audio playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
-| **Shiny.Speech.ElevenLabs** | ElevenLabs provider (TTS) | net10.0 |
+| **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
 
 ## Getting Started
 
@@ -29,9 +29,14 @@ builder.Services.AddSpeechServices();
 builder.Services.AddAzureSpeech("your-subscription-key", "your-region");
 ```
 
-### ElevenLabs TTS (Cloud)
+### ElevenLabs (Cloud)
 
 ```csharp
+// Register both STT (Scribe) and TTS:
+builder.Services.AddElevenLabsSpeech("your-api-key");
+
+// Or pick one:
+builder.Services.AddElevenLabsSpeechToText("your-api-key");
 builder.Services.AddElevenLabsTextToSpeech("your-api-key");
 ```
 
@@ -53,6 +58,24 @@ public class MyService(ITextToSpeechService tts)
     }
 }
 ```
+
+### VU Meter (Audio Level)
+
+`ITextToSpeechService` and `IAudioPlayer` expose an `AudioLevelChanged` event that fires periodically while audio is playing with a normalized `0.0`–`1.0` RMS level. Check `IsPlayerAnalysisSupported` before binding UI.
+
+```csharp
+if (tts.IsPlayerAnalysisSupported)
+    tts.AudioLevelChanged += (s, level) =>
+        MainThread.BeginInvokeOnMainThread(() => MyVuBar.Progress = level);
+```
+
+| Surface | iOS / macOS | Android | Windows | Browser |
+|---|---|---|---|---|
+| Native `ITextToSpeechService` | ✅ | ✅ | ❌ | ❌ |
+| Cloud `ITextToSpeechService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ❌ | ❌ |
+| `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ |
+
+On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` + `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and kept warm across utterances — only the first utterance pays ~50–150 ms additional startup.
 
 ### Speech-to-Text
 
@@ -128,6 +151,8 @@ Implement `ISpeechToTextProvider` and/or `ITextToSpeechProvider` from `Shiny.Spe
 ```csharp
 public class MyCloudSttProvider : ISpeechToTextProvider
 {
+    public event EventHandler<SpeechRecognitionError>? Error;
+
     public async IAsyncEnumerable<SpeechRecognitionResult> RecognizeAsync(
         Stream audioStream,
         SpeechRecognitionOptions? options = null,
@@ -135,12 +160,18 @@ public class MyCloudSttProvider : ISpeechToTextProvider
     {
         // Read PCM audio from audioStream (16kHz, 16-bit, mono)
         // Yield recognition results...
+
+        // For continuous recognition, surface non-fatal errors (e.g. a transient
+        // network blip between chunked requests) without aborting the session:
+        // Error?.Invoke(this, new SpeechRecognitionError("network blip", ex));
     }
 }
 
 // Register:
 builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 ```
+
+`CloudSpeechToText` subscribes to the provider's `Error` event and forwards it to the service-level `ISpeechToTextService.Error`, so app code only needs to wire one handler.
 
 ## Platform Requirements
 
@@ -175,4 +206,6 @@ Add to `Info.plist`:
 Add to `AndroidManifest.xml`:
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
+`MODIFY_AUDIO_SETTINGS` is required for the TTS audio-level Visualizer and for the native STT beep suppression.

@@ -11,6 +11,11 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
     static BrowserSpeechToTextService? activeInstance;
     static Regex? keywordPattern;
 
+    // Dedup state — suppress same-text keyword re-fires within a short window.
+    static string? lastKeywordFinalText;
+    static DateTime lastKeywordFinalTime;
+    static readonly TimeSpan KeywordDedupWindow = TimeSpan.FromSeconds(3);
+
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
     public bool IsListening { get; private set; }
 
@@ -46,6 +51,8 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
 
         options ??= new SpeechRecognitionOptions();
         keywordPattern = BuildKeywordPattern(options.Keywords);
+        lastKeywordFinalText = null;
+        lastKeywordFinalTime = default;
         activeInstance = this;
 
         var lang = options.Culture?.Name ?? "";
@@ -92,8 +99,12 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
         if (isFinal && keywordPattern != null)
         {
             var match = keywordPattern.Match(text);
-            if (match.Success)
+            if (match.Success && !IsDuplicateKeywordFinal(text))
+            {
+                lastKeywordFinalText = text.Trim();
+                lastKeywordFinalTime = DateTime.UtcNow;
                 instance.KeywordHeard?.Invoke(instance, match.Value);
+            }
         }
     }
 
@@ -119,6 +130,15 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
             error,
             new InvalidOperationException($"Speech recognition error: {error}")
         ));
+    }
+
+    static bool IsDuplicateKeywordFinal(string text)
+    {
+        if (lastKeywordFinalText == null)
+            return false;
+        if (!string.Equals(text.Trim(), lastKeywordFinalText, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return DateTime.UtcNow - lastKeywordFinalTime < KeywordDedupWindow;
     }
 
     static Regex? BuildKeywordPattern(string[]? keywords)

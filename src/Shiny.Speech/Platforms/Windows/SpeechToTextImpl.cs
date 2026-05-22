@@ -10,6 +10,11 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
     Windows.Media.SpeechRecognition.SpeechRecognizer? recognizer;
     Regex? keywordPattern;
 
+    // Dedup state — suppress same-text keyword re-fires within a short window.
+    string? lastKeywordFinalText;
+    DateTime lastKeywordFinalTime;
+    static readonly TimeSpan KeywordDedupWindow = TimeSpan.FromSeconds(3);
+
     public bool IsSupported => true;
     public bool IsListening { get; private set; }
 
@@ -42,6 +47,8 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
         options ??= new SpeechRecognitionOptions();
         keywordPattern = BuildKeywordPattern(options.Keywords);
+        lastKeywordFinalText = null;
+        lastKeywordFinalTime = default;
 
         recognizer = options.Culture != null
             ? new Windows.Media.SpeechRecognition.SpeechRecognizer(new Language(options.Culture.Name))
@@ -66,8 +73,12 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             if (keywordPattern != null)
             {
                 var match = keywordPattern.Match(args.Result.Text);
-                if (match.Success)
+                if (match.Success && !IsDuplicateKeywordFinal(args.Result.Text))
+                {
+                    lastKeywordFinalText = args.Result.Text.Trim();
+                    lastKeywordFinalTime = DateTime.UtcNow;
                     KeywordHeard?.Invoke(this, match.Value);
+                }
             }
         };
 
@@ -118,6 +129,15 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         }
 
         logger.LogDebug("Windows speech recognition stopped");
+    }
+
+    bool IsDuplicateKeywordFinal(string text)
+    {
+        if (lastKeywordFinalText == null)
+            return false;
+        if (!string.Equals(text.Trim(), lastKeywordFinalText, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return DateTime.UtcNow - lastKeywordFinalTime < KeywordDedupWindow;
     }
 
     static Regex? BuildKeywordPattern(string[]? keywords)
