@@ -12,7 +12,7 @@
         <PackageProjectUrl>https://shinylib.net</PackageProjectUrl>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>readme.md</PackageReadmeFile>
-        <PackageReleaseNotes>https://github.com/shinyorg/speech/releases</PackageReleaseNotes>
+        <PackageReleaseNotes>https://shinylib.net</PackageReleaseNotes>
         <PackageTags>maui speech tts stt text-to-speech speech-to-text shiny</PackageTags>
         <RepositoryUrl>https://github.com/shinyorg/speech</RepositoryUrl>
         <RepositoryType>git</RepositoryType>

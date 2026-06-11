@@ -7,7 +7,8 @@ on:
       - v2
     paths:
       - 'samples/BlazorSample/**'
-      - 'src/Shiny.Speech/**'
+      - 'src/speech/**'
+      - 'src/aiconversation/**'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
       - '.github/workflows/deploy-blazor-sample.yml'

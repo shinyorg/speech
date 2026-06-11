@@ -11,6 +11,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Shiny.Speech\Shiny.Speech.csproj" />
+        <ProjectReference Include="..\..\src\speech\Shiny.Speech\Shiny.Speech.csproj" />
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation\Shiny.AiConversation.csproj" />
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.OpenAi\Shiny.AiConversation.OpenAi.csproj" />
     </ItemGroup>
 </Project>

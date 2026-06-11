@@ -78,6 +78,7 @@ You are an expert in the Shiny.AiConversation library, a centralized AI service 
 
 ## Library Overview
 
+**GitHub**: https://github.com/shinyorg/speech (Shiny.AiConversation lives under the `ai/` directory)
 **NuGet**: `Shiny.AiConversation`
 **Namespace**: `Shiny.AiConversation`
 **Infrastructure Namespace**: `Shiny.AiConversation.Infrastructure` (internal implementations)

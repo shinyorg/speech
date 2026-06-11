@@ -1,15 +1,16 @@
-name: Sync Skills to Skills Repository
+name: Sync shiny-speech Skill
 
 on:
   push:
     branches:
       - main
+      - 'v*'
     paths:
-      - 'skills/**'
+      - 'skills/shiny-speech/**'
   workflow_dispatch:
 
 jobs:
-  sync-skills:
+  sync-skill:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,31 +31,27 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync skills directory
+      - name: Sync shiny-speech skill
         run: |
-          # Copy each skill to the shiny-client plugin in the skills repo
           mkdir -p skills-repo/plugins/shiny-client/skills
-          for skill in source/skills/*/; do
-            name=$(basename "$skill")
-            # Remove existing skill directory to ensure clean sync
-            rm -rf "skills-repo/plugins/shiny-client/skills/$name"
-            cp -r "$skill" "skills-repo/plugins/shiny-client/skills/$name"
-          done
+          rm -rf skills-repo/plugins/shiny-client/skills/shiny-speech
+          cp -r source/skills/shiny-speech skills-repo/plugins/shiny-client/skills/
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.SKILLS_REPO_TOKEN }}
           path: skills-repo
-          commit-message: "Update shiny-speech & shiny-aiconversation skills from Shiny Speech repository"
-          title: "Update shiny-speech & shiny-aiconversation skills"
+          commit-message: "Update shiny-speech skill from Shiny Speech repository"
+          title: "Update shiny-speech skill"
           body: |
-            This PR updates the shiny-speech and shiny-aiconversation skills from the [Shiny Speech repository](https://github.com/shinyorg/speech).
+            This PR updates the shiny-speech skill from the [Shiny Speech repository](https://github.com/shinyorg/speech).
 
             **Source commit:** ${{ github.sha }}
             **Triggered by:** @${{ github.actor }}
+
             ---
-            *This PR was automatically created by the [sync-skills workflow](https://github.com/shinyorg/speech/actions/workflows/sync-skills.yml).*
+            *This PR was automatically created by the [sync-speech-skill workflow](https://github.com/shinyorg/speech/actions/workflows/sync-speech-skill.yml).*
           branch: update-shiny-speech-skill
           delete-branch: true
           labels: |

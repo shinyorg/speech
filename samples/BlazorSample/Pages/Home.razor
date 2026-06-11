@@ -4,6 +4,13 @@
 @inject ISpeechToTextService SpeechToText
 @inject ITextToSpeechService TextToSpeech
 
+<div class="speech-page">
+
+<div class="app-header">
+    <h1>Shiny Speech</h1>
+    <p>Cross-platform speech services in Blazor WebAssembly</p>
+</div>
+
 <!-- Tab Navigation -->
 <div class="tabs">
     <button class="tab @(activeTab == 0 ? "active" : "")" @onclick="() => activeTab = 0">Speech to Text</button>
@@ -179,6 +186,8 @@ else
         <button class="btn btn-danger" @onclick="StopSpeakingAsync" disabled="@(!isSpeaking)" style="flex:0 0 100px">Stop</button>
     </div>
 }
+
+</div>
 
 @code {
     // --- Shared ---

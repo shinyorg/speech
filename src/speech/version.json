@@ -3,8 +3,7 @@
     "version": "2.1.0",
     "buildNumberOffset": 1,
     "pathFilters": [
-        ".",
-        ":^/ai"
+        "."
     ],
     "assemblyVersion": {
         "precision": "revision"

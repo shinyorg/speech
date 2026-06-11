@@ -1,11 +1,6 @@
-# Shiny.Speech &amp; Shiny.AiConversation
+# Shiny.Speech
 
-This repository is the home for two complementary library families:
-
-- **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text, text-to-speech, audio capture, and audio playback with pluggable cloud providers.
-- **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
-
-The two are versioned independently (see `version.json` at the repo root for Shiny.Speech and `src/aiconversation/version.json` for Shiny.AiConversation).
+Cross-platform speech services for .NET MAUI and Blazor WebAssembly — speech-to-text, text-to-speech, audio capture, and audio playback with pluggable cloud providers.
 
 ## Libraries
 
@@ -15,10 +10,6 @@ The two are versioned independently (see `version.json` at the repo root for Shi
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
-| **Shiny.AiConversation** | Central `IAiConversationService` orchestrating chat + the full voice loop | net10.0 (+ MAUI platforms) |
-| **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
-| **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
-| **Shiny.AiConversation.MessageStores.SqliteDocDb** | SQLite/DocumentDb-backed `IMessageStore` for persistent chat history | net10.0 |
 
 ## Getting Started
 
@@ -218,132 +209,3 @@ Add to `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
 `MODIFY_AUDIO_SETTINGS` is required for the TTS audio-level Visualizer and for the native STT beep suppression.
-
----
-
-# Shiny.AiConversation
-
-A centralized AI service library for .NET MAUI apps that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService` interface. It builds directly on Shiny.Speech for the voice loop.
-
-[![NuGet](https://img.shields.io/nuget/v/Shiny.AiConversation.svg)](https://www.nuget.org/packages/Shiny.AiConversation/)
-
-> The package-level readme lives at [`src/aiconversation/readme.md`](src/aiconversation/readme.md).
-
-## Features
-
-- **Chat Integration** — Send text or voice messages to any AI backend via [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai/)
-- **Wake Word Detection** — Hands-free activation with continuous keyword listening
-- **Speech-to-Text / Text-to-Speech** — Full voice loop powered by Shiny.Speech (above)
-- **Acknowledgement Modes** — None, AudioBlip (sound effects), LessWordy (concise TTS), or Full (complete TTS)
-- **Context Providers** — Pluggable `IContextProvider` visitor pattern for populating an `AiContext` per request (system prompts, AI tools, quiet words, speech options)
-- **Persistent Chat History** — Pluggable `IMessageStore` for storing and querying past conversations
-- **AI History Lookup Tool** — Automatically available when an `IMessageStore` is registered, lets the AI search past conversations on its own
-- **Voice Selection Tools** — Optional `AddVoiceSelectionTools()` lets the AI list voices, play samples, and switch its own TTS voice mid-conversation
-- **State Management** — Observable `AiState` (Idle / Listening / Thinking / Responding) with events
-- **Sound Effects** — Configurable sound stream factories for each state transition
-- **Conversation Continuation** — AI responses ending with a question automatically keep the microphone open for a reply
-- **Voice Interruption** — Configurable quiet words (e.g., "stop", "cancel") via `AiContext.QuietWords` immediately silence TTS and break the loop; any other speech during TTS interrupts and continues with the new utterance
-
-## Quick Start
-
-```csharp
-using Shiny.AiConversation;
-
-var builder = MauiApp.CreateBuilder();
-builder.UseMauiApp<App>();
-
-// Register an IChatClient in DI (from any Microsoft.Extensions.AI-compatible provider)
-builder.Services.AddChatClient(new OpenAIClient("your-api-key").GetChatClient("gpt-4o").AsIChatClient());
-
-builder.Services.AddShinyAiConversation(opts =>
-{
-    // Optional — enable persistent history (ChatLookupAITool is added automatically)
-    opts.SetMessageStore<MyMessageStore>();
-});
-
-return builder.Build();
-```
-
-### Chat client providers
-
-```csharp
-// Ready-made static OpenAI-compatible provider (Shiny.AiConversation.OpenAi)
-opts.AddStaticOpenAIChatClient(apiToken: "your-api-key", endpointUri: "https://api.openai.com/v1", modelName: "gpt-4o");
-
-// MAUI GitHub Copilot — self-contained device-code OAuth, tokens in SecureStorage (Shiny.AiConversation.Maui.GithubCopilot)
-opts.AddGithubCopilotChatClient();
-```
-
-For other backends, implement `IChatClientProvider` and register with `opts.SetChatClientProvider<MyProvider>()`.
-
-### Use the service
-
-```csharp
-public class ChatViewModel(IAiConversationService aiService)
-{
-    public Task SendMessage(string text) => aiService.TalkTo(text, CancellationToken.None);
-
-    public async Task UseMicrophone()
-    {
-        if (await aiService.RequestAccess() == AccessState.Available)
-            await aiService.ListenAndTalk(CancellationToken.None);
-    }
-
-    public Task StartWakeWord() => aiService.StartWakeWord("Hey Assistant");
-}
-```
-
-## API Overview
-
-### IAiConversationService
-
-| Member | Description |
-|--------|-------------|
-| `RequestAccess()` | Check speech-to-text access — returns `Available` or `Restricted` |
-| `TalkTo(string, CancellationToken)` | Send a text message to the AI |
-| `ListenAndTalk(CancellationToken)` | Capture speech via microphone and send to AI |
-| `StartWakeWord(string)` / `StopWakeWord()` | Begin / stop continuous wake word detection |
-| `GetChatHistory(...)` / `ClearChatHistory(...)` | Query / clear persisted chat history |
-| `ClearCurrentChat()` | Clear in-memory session messages |
-| `Status` | Current `AiState` (Idle / Listening / Thinking / Responding) |
-| `Acknowledgement` | Get/set the response delivery mode |
-| `StatusChanged` / `AiResponded` | Events for state changes and completed responses |
-
-### Acknowledgement Modes
-
-| Mode | Behavior |
-|------|----------|
-| `None` | No audio feedback or text-to-speech |
-| `AudioBlip` | Short sound effects at state transitions |
-| `LessWordy` | Text-to-speech with a "be concise" system prompt |
-| `Full` | Text-to-speech with full unmodified responses |
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              IAiConversationService              │
-│   (orchestrates chat, speech, sounds, history)   │
-├──────────────┬──────────────┬────────────────────┤
-│ IChatClientProvider │ IMessageStore │ ChatLookupAITool │
-│ (default: DI)       │ (persistence) │ (optional AITool)│
-│        IChatClient  │  ISpeechToText / ITextToSpeech / │
-│        (M.E.AI)     │  IAudioPlayer (Shiny.Speech)     │
-└─────────────────────────────────────────────────┘
-```
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | `IChatClient` abstraction |
-| Shiny.Speech | Speech-to-text, text-to-speech, and audio playback (this repo) |
-
-## Samples
-
-- [MAUI sample](samples/MauiSample) — chat, settings, wake word, and animated aura visualization
-- [Blazor sample](samples/BlazorSample) — the same features as Razor components (deployed to https://shinyorg.github.io/speech/)
-
-## License
-
-MIT
