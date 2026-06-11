@@ -1,0 +1,23 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+<div class="app-container">
+    <nav class="tab-bar">
+        <NavLink class="tab-item" href="settings" Match="NavLinkMatch.Prefix">
+            <span class="tab-icon">&#x2699;</span>
+            <span class="tab-label">Settings</span>
+        </NavLink>
+        <NavLink class="tab-item" href="aura" Match="NavLinkMatch.Prefix">
+            <span class="tab-icon">&#x25C9;</span>
+            <span class="tab-label">Aura</span>
+        </NavLink>
+        <NavLink class="tab-item" href="" Match="NavLinkMatch.All">
+            <span class="tab-icon">&#x1F4AC;</span>
+            <span class="tab-label">Chat</span>
+        </NavLink>
+    </nav>
+
+    <main class="page-content">
+        @Body
+    </main>
+</div>

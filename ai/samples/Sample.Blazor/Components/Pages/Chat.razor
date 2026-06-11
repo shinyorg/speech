@@ -1,0 +1,150 @@
+@page "/"
+@inject IAiConversationService AiService
+@implements IDisposable
+
+<PageTitle>Chat</PageTitle>
+
+<div class="chat-container">
+    <div class="chat-messages" @ref="messagesContainer">
+        @foreach (var msg in messages)
+        {
+            <div class="chat-bubble @(msg.Direction == ChatMessageDirection.User ? "mine" : "theirs")">
+                <div class="bubble-text">@msg.Message</div>
+                <div class="bubble-time">@msg.Timestamp.ToLocalTime().ToString("h:mm tt")</div>
+            </div>
+        }
+
+        @if (AiService.Status == AiState.Thinking || AiService.Status == AiState.Responding)
+        {
+            <div class="chat-bubble theirs">
+                <div class="bubble-text typing-indicator">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="chat-input-bar">
+        <input type="text"
+               @bind="inputText"
+               @bind:event="oninput"
+               @onkeydown="HandleKeyDown"
+               placeholder="Ask Copilot something..."
+               disabled="@(AiService.Status != AiState.Idle)" />
+        <button class="send-button"
+                @onclick="Send"
+                disabled="@(String.IsNullOrWhiteSpace(inputText) || AiService.Status != AiState.Idle)">
+            Send
+        </button>
+    </div>
+</div>
+
+@code {
+    readonly List<AiChatMessage> messages = [];
+    string inputText = "";
+    ElementReference messagesContainer;
+    bool shouldScrollToBottom;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AiService.AiResponded += OnAiResponded;
+        AiService.StatusChanged += OnStatusChanged;
+
+        try
+        {
+            var history = await AiService.GetChatHistory(limit: 50);
+            messages.AddRange(history);
+        }
+        catch
+        {
+            // no message store or empty
+        }
+    }
+
+    async Task Send()
+    {
+        if (String.IsNullOrWhiteSpace(inputText))
+            return;
+
+        var text = inputText;
+        inputText = "";
+
+        messages.Add(new AiChatMessage(
+            Guid.NewGuid().ToString(),
+            text,
+            DateTimeOffset.Now,
+            ChatMessageDirection.User
+        ));
+        shouldScrollToBottom = true;
+
+        try
+        {
+            await AiService.TalkTo(text, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            messages.Add(new AiChatMessage(
+                Guid.NewGuid().ToString(),
+                $"Error: {ex.Message}",
+                DateTimeOffset.Now,
+                ChatMessageDirection.AI
+            ));
+        }
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await Send();
+    }
+
+    void OnAiResponded(AiResponse response)
+    {
+        if (response.Response.Text is { } text)
+        {
+            InvokeAsync(() =>
+            {
+                messages.Add(new AiChatMessage(
+                    Guid.NewGuid().ToString(),
+                    text,
+                    DateTimeOffset.Now,
+                    ChatMessageDirection.AI
+                ));
+                shouldScrollToBottom = true;
+                StateHasChanged();
+            });
+        }
+    }
+
+    void OnStatusChanged(AiState state)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || shouldScrollToBottom)
+        {
+            shouldScrollToBottom = false;
+            await ScrollToBottom();
+        }
+    }
+
+    async Task ScrollToBottom()
+    {
+        try
+        {
+            await Task.Yield();
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    public void Dispose()
+    {
+        AiService.AiResponded -= OnAiResponded;
+        AiService.StatusChanged -= OnStatusChanged;
+    }
+}

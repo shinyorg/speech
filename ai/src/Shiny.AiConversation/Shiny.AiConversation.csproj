@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+        <IsAotCompatible>true</IsAotCompatible>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.AI"/>
+        <PackageReference Include="Shiny.Speech"/>
+        <EmbeddedResource Include="Resources\*.wav"/>
+    </ItemGroup>
+
+</Project>

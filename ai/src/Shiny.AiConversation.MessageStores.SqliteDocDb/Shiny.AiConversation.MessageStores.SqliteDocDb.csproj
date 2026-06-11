@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Shiny.DocumentDb.Extensions.DependencyInjection"/>
+        <PackageReference Include="Shiny.DocumentDb.Sqlite"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj" />
+    </ItemGroup>
+</Project>

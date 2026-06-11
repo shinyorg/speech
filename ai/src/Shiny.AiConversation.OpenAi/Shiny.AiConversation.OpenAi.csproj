@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <PackageReference Include="Microsoft.Extensions.AI.OpenAI"/>
+    </ItemGroup>
+
+</Project>

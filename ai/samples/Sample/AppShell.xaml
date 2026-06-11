@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<shiny:ShinyShell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:shiny="clr-namespace:Shiny;assembly=Shiny.Maui.Shell"
+                  xmlns:pages="clr-namespace:Sample.Pages"
+                  x:Class="Sample.AppShell"
+                  Shell.FlyoutBehavior="Disabled">
+
+    <TabBar Route="main">
+        <ShellContent Title="Settings"
+                      ContentTemplate="{DataTemplate pages:SettingsPage}"
+                      Route="settings">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x2699;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
+
+        <ShellContent Title="Aura"
+                      ContentTemplate="{DataTemplate pages:AuraPage}"
+                      Route="aura">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x25C9;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
+
+        <ShellContent Title="Chat"
+                      ContentTemplate="{DataTemplate pages:ChatPage}"
+                      Route="chat">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x1F4AC;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
+
+    </TabBar>
+
+</shiny:ShinyShell>
