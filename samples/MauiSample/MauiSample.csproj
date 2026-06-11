@@ -28,6 +28,9 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls"/>
         <PackageReference Include="Shiny.Maui.Shell"/>
+        <PackageReference Include="Shiny.Maui.Controls"/>
+        <PackageReference Include="Shiny.DocumentDb.Extensions.DependencyInjection"/>
+        <PackageReference Include="Shiny.DocumentDb.Sqlite"/>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Debug"/>
     </ItemGroup>
@@ -39,5 +42,8 @@
         <ProjectReference Include="..\..\src\Shiny.Speech.ElevenLabs\Shiny.Speech.ElevenLabs.csproj"/>
         <ProjectReference Include="..\..\src\Shiny.Speech.MicrosoftAI\Shiny.Speech.MicrosoftAI.csproj"/>
         <ProjectReference Include="..\..\src\Shiny.Speech.OpenAI\Shiny.Speech.OpenAI.csproj"/>
+        <ProjectReference Include="..\..\ai\src\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <ProjectReference Include="..\..\ai\src\Shiny.AiConversation.MessageStores.SqliteDocDb\Shiny.AiConversation.MessageStores.SqliteDocDb.csproj"/>
+        <ProjectReference Include="..\..\ai\src\Shiny.AiConversation.Maui.GithubCopilot\Shiny.AiConversation.Maui.GithubCopilot.csproj"/>
     </ItemGroup>
 </Project>

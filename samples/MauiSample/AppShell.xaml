@@ -3,16 +3,44 @@
                   xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                   xmlns:shiny="clr-namespace:Shiny;assembly=Shiny.Maui.Shell"
                   xmlns:local="clr-namespace:MauiSample"
+                  xmlns:pages="clr-namespace:MauiSample.Pages"
                   x:Class="MauiSample.AppShell"
                   Title="Shiny Speech">
 
-    <TabBar>
+    <TabBar Route="main">
         <ShellContent Title="Speech to Text"
                       Icon="mic.png"
                       ContentTemplate="{DataTemplate local:SpeechToTextPage}" />
         <ShellContent Title="Text to Speech"
                       Icon="speaker.png"
                       ContentTemplate="{DataTemplate local:TextToSpeechPage}" />
+        <ShellContent Title="Aura"
+                      ContentTemplate="{DataTemplate pages:AuraPage}"
+                      Route="aura">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x25C9;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
+        <ShellContent Title="Chat"
+                      ContentTemplate="{DataTemplate pages:ChatPage}"
+                      Route="chat">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x1F4AC;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
+        <ShellContent Title="AI Settings"
+                      ContentTemplate="{DataTemplate pages:SettingsPage}"
+                      Route="settings">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="&#x2699;"
+                                 FontFamily="OpenSansRegular"
+                                 Size="24" />
+            </ShellContent.Icon>
+        </ShellContent>
     </TabBar>
 
 </shiny:ShinyShell>

@@ -32,23 +32,24 @@ jobs:
 
       - name: Sync skills directory
         run: |
-          # Copy skills content to the shiny-client plugin in the skills repo
-          if [ -d "source/skills/shiny-speech" ]; then
+          # Copy each skill to the shiny-client plugin in the skills repo
+          mkdir -p skills-repo/plugins/shiny-client/skills
+          for skill in source/skills/*/; do
+            name=$(basename "$skill")
             # Remove existing skill directory to ensure clean sync
-            rm -rf skills-repo/plugins/shiny-client/skills/shiny-speech
-            mkdir -p skills-repo/plugins/shiny-client/skills
-            cp -r source/skills/shiny-speech skills-repo/plugins/shiny-client/skills/
-          fi
+            rm -rf "skills-repo/plugins/shiny-client/skills/$name"
+            cp -r "$skill" "skills-repo/plugins/shiny-client/skills/$name"
+          done
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.SKILLS_REPO_TOKEN }}
           path: skills-repo
-          commit-message: "Update shiny-speech skill from Shiny Speech repository"
-          title: "Update shiny-speech skill"
+          commit-message: "Update shiny-speech & shiny-aiconversation skills from Shiny Speech repository"
+          title: "Update shiny-speech & shiny-aiconversation skills"
           body: |
-            This PR updates the shiny-speech skill from the [Shiny Speech repository](https://github.com/shinyorg/speech).
+            This PR updates the shiny-speech and shiny-aiconversation skills from the [Shiny Speech repository](https://github.com/shinyorg/speech).
 
             **Source commit:** ${{ github.sha }}
             **Triggered by:** @${{ github.actor }}

@@ -7,7 +7,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.AI"/>
-        <PackageReference Include="Shiny.Speech"/>
+        <ProjectReference Include="..\..\..\src\Shiny.Speech\Shiny.Speech.csproj"/>
         <EmbeddedResource Include="Resources\*.wav"/>
     </ItemGroup>
 

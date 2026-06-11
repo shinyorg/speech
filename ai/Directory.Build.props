@@ -17,7 +17,8 @@
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>readme.md</PackageReadmeFile>
         <PackageTags>maui ai chat copilot speech wake-word tts stt</PackageTags>
-        <RepositoryUrl>https://github.com/shinyorg/ai</RepositoryUrl>
+        <RepositoryUrl>https://github.com/shinyorg/speech</RepositoryUrl>
+        <PackageReleaseNotes>https://github.com/shinyorg/speech/releases</PackageReleaseNotes>
         <RepositoryType>git</RepositoryType>
         <CI Condition="'$(GITHUB_ACTIONS)' == 'true'">true</CI>
         <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<fp:ShinyContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:fp="clr-namespace:Shiny.Maui.Controls.FloatingPanel;assembly=Shiny.Maui.Controls"
+                     xmlns:pages="clr-namespace:MauiSample.Pages"
+                     x:Class="MauiSample.Pages.AuraPage"
+                     x:DataType="pages:AuraViewModel"
+                     Title="K.I.T.T."
+                     BackgroundColor="#000000">
+
+    <Grid RowDefinitions="*,Auto" Padding="20">
+
+        <Border Stroke="#330000"
+                StrokeThickness="2"
+                BackgroundColor="#0A0000"
+                VerticalOptions="Fill"
+                HorizontalOptions="Fill">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="8" />
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding AuraTappedCommand}" />
+            </Border.GestureRecognizers>
+
+            <Grid RowDefinitions="18,*,18" RowSpacing="14" Padding="14">
+
+                <!-- Top scanner channel -->
+                <Border x:Name="ScannerTopChannel"
+                        Grid.Row="0"
+                        BackgroundColor="#1A0000"
+                        Stroke="#220000"
+                        StrokeThickness="1"
+                        Padding="2">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="2" />
+                    </Border.StrokeShape>
+                    <BoxView x:Name="ScannerTop"
+                             Color="#FF1A00"
+                             WidthRequest="110"
+                             HeightRequest="14"
+                             CornerRadius="2"
+                             HorizontalOptions="Start">
+                        <BoxView.Shadow>
+                            <Shadow Brush="#FF2A00" Offset="0,0" Radius="14" Opacity="0.9" />
+                        </BoxView.Shadow>
+                    </BoxView>
+                </Border>
+
+                <!-- Voice modulator (built in code-behind) -->
+                <HorizontalStackLayout x:Name="BarsHost"
+                                       Grid.Row="1"
+                                       Spacing="22"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+
+                <!-- Bottom scanner channel -->
+                <Border Grid.Row="2"
+                        BackgroundColor="#1A0000"
+                        Stroke="#220000"
+                        StrokeThickness="1"
+                        Padding="2">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="2" />
+                    </Border.StrokeShape>
+                    <BoxView x:Name="ScannerBottom"
+                             Color="#FF1A00"
+                             WidthRequest="110"
+                             HeightRequest="14"
+                             CornerRadius="2"
+                             HorizontalOptions="End">
+                        <BoxView.Shadow>
+                            <Shadow Brush="#FF2A00" Offset="0,0" Radius="14" Opacity="0.9" />
+                        </BoxView.Shadow>
+                    </BoxView>
+                </Border>
+            </Grid>
+        </Border>
+
+        <VerticalStackLayout Grid.Row="1"
+                             Spacing="6"
+                             HorizontalOptions="Center"
+                             Margin="0,0,0,40">
+            <Label Text="K.I.T.T."
+                   FontSize="14"
+                   FontAttributes="Bold"
+                   CharacterSpacing="6"
+                   TextColor="#FF3A00"
+                   HorizontalOptions="Center" />
+            <Label Text="{Binding StatusText}"
+                   FontSize="24"
+                   FontAttributes="Bold"
+                   TextColor="#FF1A00"
+                   HorizontalOptions="Center" />
+            <Label Text="{Binding LastTokenBurn}"
+                   FontSize="11"
+                   CharacterSpacing="2"
+                   TextColor="#FF8855"
+                   HorizontalOptions="Center" />
+            <Label Text="{Binding HeardText, StringFormat='YOU: {0}'}"
+                   IsVisible="{Binding HasHeardText}"
+                   FontSize="12"
+                   TextColor="#FFB080"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3" />
+            <Label Text="{Binding SpokenText, StringFormat='K.I.T.T.: {0}'}"
+                   IsVisible="{Binding HasSpokenText}"
+                   FontSize="12"
+                   TextColor="#FFD0B0"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+    <fp:ShinyContentPage.Panels>
+        <fp:FloatingPanel IsOpen="{Binding IsResponseVisible}"
+                          FitContent="True"
+                          HasBackdrop="False"
+                          CloseOnBackdropTap="False"
+                          PanelBackgroundColor="#E61A0000"
+                          HandleColor="#FF1A00"
+                          PanelCornerRadius="16">
+            <VerticalStackLayout Padding="20,8,20,20" Spacing="12">
+                <Label Text="K.I.T.T."
+                       FontSize="14"
+                       FontAttributes="Bold"
+                       CharacterSpacing="4"
+                       TextColor="#FF3A00" />
+                <Label Text="{Binding LastResponseText}"
+                       FontSize="15"
+                       TextColor="#FFD0B0"
+                       LineBreakMode="WordWrap"
+                       MaxLines="20" />
+            </VerticalStackLayout>
+        </fp:FloatingPanel>
+    </fp:ShinyContentPage.Panels>
+</fp:ShinyContentPage>

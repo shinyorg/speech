@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:sc="http://shiny.net/maui/controls"
+             xmlns:pages="clr-namespace:MauiSample.Pages"
+             x:Class="MauiSample.Pages.SettingsPage"
+             x:DataType="pages:SettingsViewModel"
+             Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout>
+            <sc:TableView HeaderBackgroundColor="{AppThemeBinding Light={StaticResource Surface}, Dark={StaticResource SurfaceDark}}"
+                         HeaderTextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                         HeaderFontAttributes="Bold"
+                         HeaderFontSize="13"
+                         FooterTextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray400}}"
+                         FooterFontSize="12"
+                         CellBackgroundColor="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}"
+                         CellTitleColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}"
+                         CellValueTextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}"
+                         CellAccentColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}"
+                         SeparatorColor="{AppThemeBinding Light={StaticResource Gray100}, Dark=#2A2A3E}"
+                         SectionSeparatorColor="Transparent"
+                         SectionSeparatorHeight="12"
+                         CellBorderRadius="0">
+                <sc:TableView.Root>
+                    <sc:TableRoot>
+                        <sc:TableSection Title="Status">
+                            <sc:LabelCell Title="AI Status"
+                                          ValueText="{Binding CurrentStatus}" />
+                        </sc:TableSection>
+
+                        <sc:TableSection Title="Wake Word"
+                                         FooterText="Set a keyword to activate hands-free mode.">
+                            <sc:EntryCell Title="Wake Word"
+                                          ValueText="{Binding WakeWordText, Mode=TwoWay}"
+                                          Placeholder="e.g. Hey Copilot" />
+                            <sc:ButtonCell Title="{Binding WakeWordButtonText}"
+                                           Command="{Binding ToggleWakeWordCommand}" />
+                        </sc:TableSection>
+
+                        <sc:TableSection Title="Response Mode"
+                                         FooterText="Controls how the AI acknowledges responses.">
+                            <sc:PickerCell Title="Acknowledgement"
+                                           ItemsSource="{Binding AcknowledgementOptions}"
+                                           SelectedItem="{Binding SelectedAcknowledgementName, Mode=TwoWay}"
+                                           UsePickToClose="True" />
+                        </sc:TableSection>
+
+                        <sc:TableSection Title="Interruption"
+                                         FooterText="When enabled, you can interrupt TTS by speaking.">
+                            <sc:SwitchCell Title="Enable Interruption"
+                                           On="{Binding InterruptionEnabled, Mode=TwoWay}" />
+                        </sc:TableSection>
+
+                        <sc:TableSection Title="Danger Zone">
+                            <sc:ButtonCell Title="Clear All Chat History"
+                                           Command="{Binding ClearHistoryCommand}"
+                                           ButtonTextColor="{StaticResource Danger}" />
+                        </sc:TableSection>
+                    </sc:TableRoot>
+                </sc:TableView.Root>
+            </sc:TableView>
+
+            <Grid ColumnDefinitions="*,Auto" Padding="16,8">
+                <Label Text="Quiet Words"
+                       FontAttributes="Bold"
+                       FontSize="16"
+                       VerticalOptions="Center" />
+                <Button Text="Add"
+                        Command="{Binding AddQuietWordCommand}"
+                        Grid.Column="1"
+                        HeightRequest="36"
+                        Padding="12,0" />
+            </Grid>
+
+            <CollectionView ItemsSource="{Binding QuietWords}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <SwipeView>
+                            <SwipeView.RightItems>
+                                <SwipeItems>
+                                    <SwipeItem Text="Delete"
+                                               BackgroundColor="{StaticResource Danger}"
+                                               Command="{Binding Source={RelativeSource AncestorType={x:Type pages:SettingsViewModel}}, Path=RemoveQuietWordCommand}"
+                                               CommandParameter="{Binding}" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
+
+                            <Grid Padding="16,12"
+                                  BackgroundColor="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type pages:SettingsViewModel}}, Path=EditQuietWordCommand}"
+                                        CommandParameter="{Binding}" />
+                                </Grid.GestureRecognizers>
+                                <Label Text="{Binding}"
+                                       FontSize="15"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </SwipeView>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

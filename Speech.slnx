@@ -33,4 +33,15 @@
   <Project Path="src/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj" />
   <Project Path="src/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
   <Project Path="src/Shiny.Speech/Shiny.Speech.csproj" />
+  <Folder Name="/AiConversation/">
+    <File Path="ai/version.json" />
+    <File Path="ai/Directory.Build.props" />
+    <File Path="skills/shiny-aiconversation/SKILL.md" />
+    <Project Path="ai/src/Shiny.AiConversation/Shiny.AiConversation.csproj" />
+    <Project Path="ai/src/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj" />
+    <Project Path="ai/src/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj" />
+    <Project Path="ai/src/Shiny.AiConversation.MessageStores.SqliteDocDb/Shiny.AiConversation.MessageStores.SqliteDocDb.csproj" />
+    <Project Path="ai/src/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj" />
+    <Project Path="ai/tests/Shiny.AiConversation.Tests/Shiny.AiConversation.Tests.csproj" />
+  </Folder>
 </Solution>

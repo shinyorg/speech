@@ -21,4 +21,14 @@
     <Color x:Key="Gray900">#212121</Color>
     <Color x:Key="Gray950">#141414</Color>
 
+    <!-- AI Conversation pages -->
+    <Color x:Key="Accent">#00D2FF</Color>
+    <Color x:Key="Success">#00B894</Color>
+    <Color x:Key="Danger">#FF6B6B</Color>
+    <Color x:Key="Surface">#F8F9FE</Color>
+    <Color x:Key="SurfaceDark">#16213E</Color>
+    <Color x:Key="CardLight">#FFFFFF</Color>
+    <Color x:Key="CardDark">#1A1A2E</Color>
+    <Color x:Key="OffBlack">#0F0E2E</Color>
+
 </ResourceDictionary>
