@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices.JavaScript;
+using Shiny.Audio;
 
 namespace Shiny.Speech;
 

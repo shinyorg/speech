@@ -7,6 +7,7 @@ using Android.OS;
 using Android.Speech;
 using Microsoft.Extensions.Logging;
 using Stream = Android.Media.Stream;
+using Shiny.Audio;
 
 namespace Shiny.Speech;
 

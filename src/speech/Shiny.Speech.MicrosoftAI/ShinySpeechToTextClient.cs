@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
+using Shiny.Audio;
 using Shiny.Speech.Cloud;
 
 namespace Shiny.Speech.MicrosoftAI;

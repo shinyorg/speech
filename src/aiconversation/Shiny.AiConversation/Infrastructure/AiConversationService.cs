@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Shiny.Audio;
 using Shiny.Speech;
 
 namespace Shiny.AiConversation.Infrastructure;

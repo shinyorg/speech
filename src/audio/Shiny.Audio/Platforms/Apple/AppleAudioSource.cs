@@ -1,7 +1,7 @@
 using AVFoundation;
 using Microsoft.Extensions.Logging;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
 {

@@ -2,7 +2,8 @@
 
 This repository is the home for two complementary library families:
 
-- **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text, text-to-speech, audio capture, and audio playback with pluggable cloud providers.
+- **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
+- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 The two are versioned independently (see `version.json` at the repo root for Shiny.Speech and `src/aiconversation/version.json` for Shiny.AiConversation).
@@ -11,7 +12,8 @@ The two are versioned independently (see `version.json` at the repo root for Shi
 
 | Package | Description | Targets |
 |---------|-------------|---------|
-| **Shiny.Speech** | Core interfaces + native platform implementations (STT, TTS, audio capture, audio playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Speech** | Core STT/TTS interfaces + native platform implementations (references Shiny.Audio for capture/playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
@@ -31,6 +33,11 @@ builder.Services.AddSpeechServices();
 // Registers: ISpeechToTextService, ITextToSpeechService, IAudioSource, IAudioPlayer
 // On Browser/WASM: auto-detected via OperatingSystem.IsBrowser()
 ```
+
+> **Audio types moved to `Shiny.Audio`.** `IAudioSource`, `IAudioPlayer`, `PipeStream`, and
+> `AccessState` now live in the `Shiny.Audio` namespace (they used to be in `Shiny.Speech`). Add
+> `using Shiny.Audio;` where you consume them. `AddSpeechServices()` still wires them up; to register
+> audio on its own (without speech) call `builder.Services.AddAudioServices();`.
 
 ### Azure AI Speech (Cloud)
 
@@ -327,8 +334,9 @@ public class ChatViewModel(IAiConversationService aiService)
 ├──────────────┬──────────────┬────────────────────┤
 │ IChatClientProvider │ IMessageStore │ ChatLookupAITool │
 │ (default: DI)       │ (persistence) │ (optional AITool)│
-│        IChatClient  │  ISpeechToText / ITextToSpeech / │
-│        (M.E.AI)     │  IAudioPlayer (Shiny.Speech)     │
+│        IChatClient  │  ISpeechToText / ITextToSpeech   │
+│        (M.E.AI)     │  (Shiny.Speech) · IAudioPlayer   │
+│                     │  (Shiny.Audio)                   │
 └─────────────────────────────────────────────────┘
 ```
 

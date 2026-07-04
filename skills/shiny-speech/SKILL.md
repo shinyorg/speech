@@ -41,6 +41,7 @@ triggers:
   - AddSpeechServices
   - AddSpeechToText
   - AddTextToSpeech
+  - AddAudioServices
   - AddAudioSource
   - AddAudioPlayer
   - AddCloudSpeechToText
@@ -57,6 +58,7 @@ triggers:
   - CloudSpeechToText
   - CloudTextToSpeech
   - Shiny.Speech
+  - Shiny.Audio
   - Shiny.Speech.Cloud
   - Shiny.Speech.Azure
   - Shiny.Speech.ElevenLabs
@@ -166,9 +168,17 @@ Or register individually:
 ```csharp
 builder.Services.AddSpeechToText();   // ISpeechToTextService only
 builder.Services.AddTextToSpeech();   // ITextToSpeechService only
+builder.Services.AddAudioServices();  // IAudioSource + IAudioPlayer (from Shiny.Audio)
 builder.Services.AddAudioSource();    // IAudioSource only
 builder.Services.AddAudioPlayer();    // IAudioPlayer only
 ```
+
+> **Namespace:** `IAudioSource`, `IAudioPlayer`, `PipeStream`, and `AccessState` live in the
+> **`Shiny.Audio`** namespace (shipped in the standalone `Shiny.Audio` package, referenced by
+> `Shiny.Speech`). Add `using Shiny.Audio;` when consuming them. All the DI extension methods above
+> are in the `Shiny` namespace regardless of package. `AddAudioServices()` / `AddAudioSource()` /
+> `AddAudioPlayer()` come from `Shiny.Audio` and can be used **without** `Shiny.Speech` for
+> capture/playback-only scenarios.
 
 **Azure AI Speech (replaces platform-native with cloud):**
 ```csharp
@@ -372,6 +382,8 @@ public class MyViewModel(ITextToSpeechService tts)
 ### 3. Audio Capture
 
 ```csharp
+using Shiny.Audio; // IAudioSource, IAudioPlayer, PipeStream, AccessState
+
 public class MyViewModel(IAudioSource audioSource)
 {
     async Task CaptureAudio(CancellationToken ct)

@@ -2,7 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices.JavaScript;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 [SupportedOSPlatform("browser")]
 public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IAudioPlayer

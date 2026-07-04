@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 [SupportedOSPlatform("browser")]
 internal static class BrowserJsModule

@@ -4,19 +4,25 @@
 
 ```bash
 dotnet add package Shiny.Speech
+dotnet add package Shiny.Audio                   # Referenced transitively by Shiny.Speech; add directly for audio-only use
 dotnet add package Shiny.Speech.Azure            # Optional: Azure AI Speech
 dotnet add package Shiny.Speech.ElevenLabs       # Optional: ElevenLabs STT (Scribe) + TTS
 ```
 
-## Namespace
+## Namespaces
 
 ```csharp
-using Shiny.Speech;
+using Shiny.Speech; // ISpeechToTextService, ITextToSpeechService, VoiceInfo, SpeechRecognition*, TextToSpeechOptions
+using Shiny.Audio;  // IAudioSource, IAudioPlayer, PipeStream, AccessState
 ```
+
+`AccessState` and the audio interfaces moved from `Shiny.Speech` into the standalone `Shiny.Audio`
+package/namespace. DI extension methods (`AddSpeechServices`, `AddAudioServices`, `AddAudioSource`,
+`AddAudioPlayer`, …) remain in the `Shiny` namespace.
 
 ## AccessState Enum
 
-Permission/availability states for speech services.
+Permission/availability states for speech and audio services (namespace `Shiny.Audio`).
 
 ```csharp
 public enum AccessState

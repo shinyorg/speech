@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Windows.Globalization;
 using Windows.Media.SpeechRecognition;
+using Shiny.Audio;
 
 namespace Shiny.Speech;
 

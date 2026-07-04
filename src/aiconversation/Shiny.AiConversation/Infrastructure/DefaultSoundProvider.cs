@@ -1,3 +1,4 @@
+using Shiny.Audio;
 using Shiny.Speech;
 
 namespace Shiny.AiConversation.Infrastructure;

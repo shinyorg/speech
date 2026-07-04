@@ -1,6 +1,7 @@
 using Imposter.Abstractions;
 using Microsoft.Extensions.AI;
 using Shiny.AiConversation.Infrastructure;
+using Shiny.Audio;
 using Shiny.Speech;
 
 namespace Shiny.AiConversation.Tests;

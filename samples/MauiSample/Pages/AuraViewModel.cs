@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shiny;
 using Shiny.AiConversation;
+using Shiny.Audio;
 using Shiny.Speech;
 
 namespace MauiSample.Pages;

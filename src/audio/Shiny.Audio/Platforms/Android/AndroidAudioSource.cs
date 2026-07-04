@@ -3,7 +3,7 @@ using Android.Content.PM;
 using Android.Media;
 using Microsoft.Extensions.Logging;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 public class AndroidAudioSource(ActivityProvider activityProvider, ILogger<AndroidAudioSource> logger) : IAudioSource
 {

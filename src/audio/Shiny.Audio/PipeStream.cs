@@ -1,4 +1,4 @@
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 /// <summary>
 /// A thread-safe stream that allows one thread to write and another to read.

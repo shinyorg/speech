@@ -2,7 +2,7 @@ using Android.Content.PM;
 using AndroidX.Fragment.App;
 using Fragment = AndroidX.Fragment.App.Fragment;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 class PermissionRequestFragment : Fragment
 {

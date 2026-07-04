@@ -3,7 +3,7 @@ using Android.Media.Audiofx;
 using Microsoft.Extensions.Logging;
 using Stream = System.IO.Stream;
 
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlayer
 {

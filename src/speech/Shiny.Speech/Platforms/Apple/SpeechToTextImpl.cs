@@ -3,6 +3,7 @@ using AVFoundation;
 using Foundation;
 using Microsoft.Extensions.Logging;
 using Speech;
+using Shiny.Audio;
 
 namespace Shiny.Speech;
 

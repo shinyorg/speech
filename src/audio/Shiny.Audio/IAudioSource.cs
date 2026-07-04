@@ -1,4 +1,4 @@
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 /// <summary>
 /// Platform-specific audio capture source that provides raw PCM audio data.

@@ -1,3 +1,5 @@
+using Shiny.Audio;
+
 namespace Shiny.Speech;
 
 public interface ISpeechToTextService

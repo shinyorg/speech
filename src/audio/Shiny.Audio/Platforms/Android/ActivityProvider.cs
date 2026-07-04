@@ -1,4 +1,4 @@
-namespace Shiny.Speech;
+namespace Shiny.Audio;
 
 public class ActivityProvider : Java.Lang.Object, Application.IActivityLifecycleCallbacks
 {

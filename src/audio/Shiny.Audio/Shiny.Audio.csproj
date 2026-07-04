@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFrameworks>$(PlatformTargets)</TargetFrameworks>
-        <RootNamespace>Shiny.Speech</RootNamespace>
+        <RootNamespace>Shiny.Audio</RootNamespace>
     </PropertyGroup>
 
     <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos'">
@@ -22,7 +22,6 @@
 
     <ItemGroup>
         <Compile Remove="Platforms\**\*.cs" />
-        <ProjectReference Include="..\..\audio\Shiny.Audio\Shiny.Audio.csproj" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     </ItemGroup>
@@ -46,7 +45,7 @@
     <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == ''">
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
-    
+
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == ''">
         <Compile Include="Platforms\Browser\**\*.cs" />
     </ItemGroup>

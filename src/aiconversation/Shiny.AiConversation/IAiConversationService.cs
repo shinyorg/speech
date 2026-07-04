@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Shiny.Audio;
 using Shiny.Speech;
 
 namespace Shiny.AiConversation;

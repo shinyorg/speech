@@ -1,58 +1,65 @@
 <Solution>
-  <Files>
-    <File Path="readme.md" />
-    <File Path="Directory.build.props" />
-    <File Path="Directory.build.targets" />
-    <File Path="LICENSE" />
-    <File Path="version.json" />
-    <File Path=".github/workflows/build.yml" />
-    <File Path=".github/workflows/sync-speech-skill.yml" />
-    <File Path=".github/workflows/sync-aiconversation-skill.yml" />
-  </Files>
-  <Folder Name="/Solution/">
-    <File Path=".github\FUNDING.yml" />
-    <File Path=".github\ISSUE_TEMPLATE\bug_report.yml" />
-    <File Path=".github\ISSUE_TEMPLATE\config.yml" />
-    <File Path=".github\ISSUE_TEMPLATE\feature_request.yml" />
-    <File Path=".github\PULL_REQUEST_TEMPLATE.md" />
-    <File Path=".github\workflows\build.yml" />
+    <Files>
+        <File Path="readme.md"/>
+        <File Path="Directory.build.props"/>
+        <File Path="Directory.build.targets"/>
+        <File Path="LICENSE"/>
+        <File Path="version.json"/>
+        <File Path=".github/workflows/build.yml"/>
+        <File Path=".github/workflows/sync-speech-skill.yml"/>
+        <File Path=".github/workflows/sync-aiconversation-skill.yml"/>
+    </Files>
+    <Folder Name="/.Solution/">
+        <File Path=".github\FUNDING.yml"/>
+        <File Path=".github\ISSUE_TEMPLATE\bug_report.yml"/>
+        <File Path=".github\ISSUE_TEMPLATE\config.yml"/>
+        <File Path=".github\ISSUE_TEMPLATE\feature_request.yml"/>
+        <File Path=".github\PULL_REQUEST_TEMPLATE.md"/>
+        <File Path=".github\workflows\build.yml"/>
+        <File Path="Build.slnf"/>
+        <File Path="Directory.Packages.props"/>
+        <File Path="LICENSE"/>
+        <File Path="nuget.png"/>
+        <File Path="README.md"/>
+    </Folder>
+    <Project Path="samples/MauiSample/MauiSample.csproj"/>
+    <Folder Name="/Speech/">
+        <File Path="src/speech/version.json"/>
+        <File Path="src/speech/Directory.Build.props"/>
+        <File Path="src/speech/readme.md"/>
+        <File Path="skills/shiny-aiconversation/SKILL.md"/>
+        <File Path=".github\workflows\sync-aiconversation-skill.yml"/>
+        <Project Path="src/speech/Shiny.Speech.Azure/Shiny.Speech.Azure.csproj"/>
+        <Project Path="src/speech/Shiny.Speech.Cloud/Shiny.Speech.Cloud.csproj"/>
+        <Project Path="src/speech/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj"/>
+        <Project Path="src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj"/>
+        <Project Path="src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj"/>
+        <Project Path="src/speech/Shiny.Speech/Shiny.Speech.csproj"/>
+        <File Path="skills\shiny-speech\SKILL.md"/>
+    </Folder>
+    <Project Path="samples/BlazorSample/BlazorSample.csproj"/>
+    <Folder Name="/Audio/">
+        <File Path="src/audio/version.json"/>
+        <File Path="src/audio/Directory.Build.props"/>
+        <File Path="src/audio/readme.md"/>
+        <Project Path="src/audio/Shiny.Audio/Shiny.Audio.csproj"/>
+    </Folder>
+    <Folder Name="/AiConversation/">
+        <File Path="src/aiconversation/version.json"/>
+        <File Path="src/aiconversation/Directory.Build.props"/>
+        <File Path="src/aiconversation/readme.md"/>
 
-    
-    <File Path="Build.slnf" />
-    <File Path="Directory.Packages.props" />
-    <File Path="LICENSE" />
-    <File Path="nuget.png" />
-    <File Path="README.md" />
-  </Folder>
-  <Project Path="samples/MauiSample/MauiSample.csproj" />
-  <Folder Name="/Speech/">
-    <File Path="src/speech/version.json" />
-    <File Path="src/speech/Directory.Build.props" />
-    <File Path="src/speech/readme.md" />
-    <File Path="skills/shiny-aiconversation/SKILL.md" />
-    <File Path=".github\workflows\sync-aiconversation-skill.yml" />
-    <Project Path="src/speech/Shiny.Speech.Azure/Shiny.Speech.Azure.csproj" />
-    <Project Path="src/speech/Shiny.Speech.Cloud/Shiny.Speech.Cloud.csproj" />
-    <Project Path="src/speech/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj" />
-    <Project Path="src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj" />
-    <Project Path="src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
-    <Project Path="src/speech/Shiny.Speech/Shiny.Speech.csproj" />
-    <File Path="skills\shiny-speech\SKILL.md" />
-  </Folder>
-  <Project Path="samples/BlazorSample/BlazorSample.csproj" />
-  <Folder Name="/AiConversation/">
-    <File Path="src/aiconversation/version.json" />
-    <File Path="src/aiconversation/Directory.Build.props" />
-    <File Path="src/aiconversation/readme.md" />
-    
-    <File Path=".github\workflows\sync-speech-skill.yml" />
-    <File Path="skills/shiny-aiconversation/SKILL.md" />
-    <Project Path="src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj" />
-    <Project Path="src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj" />
-    <Project Path="src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj" />
-    <Project Path="src/aiconversation/Shiny.AiConversation.MessageStores.SqliteDocDb/Shiny.AiConversation.MessageStores.SqliteDocDb.csproj" />
-    <Project Path="src/aiconversation/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj" />
-    <Project Path="src/aiconversation/tests/Shiny.AiConversation.Tests/Shiny.AiConversation.Tests.csproj" />
-    
-  </Folder>
+        <File Path=".github\workflows\sync-speech-skill.yml"/>
+        <File Path="skills/shiny-aiconversation/SKILL.md"/>
+        <Project Path="src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj"/>
+        <Project
+                Path="src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj"/>
+        <Project
+                Path="src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj"/>
+        <Project
+                Path="src/aiconversation/Shiny.AiConversation.MessageStores.SqliteDocDb/Shiny.AiConversation.MessageStores.SqliteDocDb.csproj"/>
+        <Project Path="src/aiconversation/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj"/>
+        <Project Path="src/aiconversation/tests/Shiny.AiConversation.Tests/Shiny.AiConversation.Tests.csproj"/>
+
+    </Folder>
 </Solution>

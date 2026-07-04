@@ -2,6 +2,7 @@
     "solution": {
         "path": "Speech.slnx",
         "projects": [
+            "src/audio/Shiny.Audio/Shiny.Audio.csproj",
             "src/speech/Shiny.Speech/Shiny.Speech.csproj",
             "src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj",
             "src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj",
