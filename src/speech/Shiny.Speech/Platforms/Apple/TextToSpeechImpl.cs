@@ -105,10 +105,13 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         // — i.e. PlayAndRecord — leave the category alone. Switching to Playback-only would
         // suspend the microphone for the duration of TTS and break any concurrent interruption
         // listening. Always reactivate the session in case the previous owner deactivated it.
+        // Preserve the current category options rather than clearing them, so we don't tear down
+        // another component's ducking (e.g. Shiny.Music's Duck() sets Playback + DuckOthers and
+        // expects the announcement to play over the ducked music).
         var audioSession = AVAudioSession.SharedInstance();
         var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
         if (audioSession.Category != playAndRecord)
-            audioSession.SetCategory(AVAudioSessionCategory.Playback, (AVAudioSessionCategoryOptions)0, out _);
+            audioSession.SetCategory(AVAudioSessionCategory.Playback, audioSession.CategoryOptions, out _);
         audioSession.SetActive(true, out _);
 #endif
     }

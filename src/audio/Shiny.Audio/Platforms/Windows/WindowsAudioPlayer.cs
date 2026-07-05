@@ -18,14 +18,26 @@ public class WindowsAudioPlayer(ILogger<WindowsAudioPlayer> logger) : IAudioPlay
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
-        await StopAsync();
-
         var ras = new InMemoryRandomAccessStream();
         await audioStream.CopyToAsync(ras.AsStreamForWrite(), cancellationToken);
         ras.Seek(0);
 
+        await PlayCoreAsync(MediaSource.CreateFromStream(ras, "audio/mpeg"), cancellationToken);
+    }
+
+    public Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    {
+        // MediaSource.CreateFromUri handles both remote http(s) URLs and local file:// paths.
+        var uri = PlaybackSource.IsRemote(source) ? new Uri(source) : new Uri(Path.GetFullPath(source));
+        return PlayCoreAsync(MediaSource.CreateFromUri(uri), cancellationToken);
+    }
+
+    async Task PlayCoreAsync(IMediaPlaybackSource source, CancellationToken cancellationToken)
+    {
+        await StopAsync();
+
         mediaPlayer = new MediaPlayer();
-        mediaPlayer.Source = MediaSource.CreateFromStream(ras, "audio/mpeg");
+        mediaPlayer.Source = source;
 
         playbackTcs = new TaskCompletionSource();
         mediaPlayer.MediaEnded += OnMediaEnded;

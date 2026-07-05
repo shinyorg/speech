@@ -1,12 +1,14 @@
-<?xml version="1.0" encoding="utf-8" ?>
-<fp:ShinyContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-                     xmlns:fp="clr-namespace:Shiny.Maui.Controls.FloatingPanel;assembly=Shiny.Maui.Controls"
-                     xmlns:pages="clr-namespace:MauiSample.Pages"
-                     x:Class="MauiSample.Pages.AuraPage"
-                     x:DataType="pages:AuraViewModel"
-                     Title="K.I.T.T."
-                     BackgroundColor="#000000">
+<?xml version="1.0" encoding="utf-8"?>
+
+<shiny:ShinyContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                        xmlns:fp="clr-namespace:Shiny.Maui.Controls.FloatingPanel;assembly=Shiny.Maui.Controls"
+                        xmlns:pages="clr-namespace:MauiSample.Pages"
+                        xmlns:shiny="http://shiny.net/maui/controls"
+                        x:Class="MauiSample.Pages.AuraPage"
+                        x:DataType="pages:AuraViewModel"
+                        Title="K.I.T.T."
+                        BackgroundColor="#000000">
 
     <Grid RowDefinitions="*,Auto" Padding="20">
 
@@ -116,7 +118,7 @@
 
     </Grid>
 
-    <fp:ShinyContentPage.Panels>
+    <shiny:ShinyContentPage.Panels>
         <fp:FloatingPanel IsOpen="{Binding IsResponseVisible}"
                           FitContent="True"
                           HasBackdrop="False"
@@ -137,5 +139,5 @@
                        MaxLines="20" />
             </VerticalStackLayout>
         </fp:FloatingPanel>
-    </fp:ShinyContentPage.Panels>
-</fp:ShinyContentPage>
+    </shiny:ShinyContentPage.Panels>
+</shiny:ShinyContentPage>

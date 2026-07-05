@@ -17,26 +17,55 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
-        await StopAsync();
-
         using var ms = new MemoryStream();
         await audioStream.CopyToAsync(ms, cancellationToken);
-        var data = NSData.FromArray(ms.ToArray());
 
-        player = AVAudioPlayer.FromData(data);
-        if (player == null)
+        var newPlayer = AVAudioPlayer.FromData(NSData.FromArray(ms.ToArray()));
+        if (newPlayer == null)
             throw new InvalidOperationException("Failed to create audio player from data");
 
+        await PlayCoreAsync(newPlayer, cancellationToken);
+    }
+
+    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    {
+        AVAudioPlayer? newPlayer;
+        if (PlaybackSource.IsRemote(source))
+        {
+            // AVAudioPlayer cannot stream a remote URL, so buffer it into memory first
+            // (keeps metering working, same as the stream path).
+            var bytes = await PlaybackSource.DownloadAsync(source, cancellationToken);
+            newPlayer = AVAudioPlayer.FromData(NSData.FromArray(bytes));
+        }
+        else
+        {
+            newPlayer = AVAudioPlayer.FromUrl(NSUrl.FromFilename(source), out _);
+        }
+
+        if (newPlayer == null)
+            throw new InvalidOperationException($"Failed to create audio player from source: {source}");
+
+        await PlayCoreAsync(newPlayer, cancellationToken);
+    }
+
+    async Task PlayCoreAsync(AVAudioPlayer newPlayer, CancellationToken cancellationToken)
+    {
+        await StopAsync();
+
+        player = newPlayer;
         player.MeteringEnabled = true;
 
 #if !MACOS
         // If something else (e.g. an active STT session) has already configured PlayAndRecord,
         // leave it alone. Switching to Playback-only would suspend the microphone and break any
         // concurrent recognition. Always reactivate the session in case it was deactivated.
+        // Preserve the current category options (OR in DefaultToSpeaker) rather than replacing them,
+        // so we don't tear down another component's ducking (e.g. Shiny.Music's Duck() sets
+        // Playback + DuckOthers and expects this playback to be heard over the ducked music).
         var session = AVAudioSession.SharedInstance();
         var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
         if (session.Category != playAndRecord)
-            session.SetCategory(AVAudioSessionCategory.Playback, AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
+            session.SetCategory(AVAudioSessionCategory.Playback, session.CategoryOptions | AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
         session.SetActive(true, out _);
 #endif
 

@@ -1,5 +1,5 @@
 using Shiny.AiConversation;
-using Shiny.Maui.Controls.FloatingPanel;
+using Shiny.Maui.Controls;
 
 namespace MauiSample.Pages;
 

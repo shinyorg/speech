@@ -1,8 +1,9 @@
 <Project>
+    <!-- Root: settings common to every project in the repo (libraries and samples). -->
     <PropertyGroup>
-        <BaseTargetFramework>net10.0</BaseTargetFramework>
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <BaseTargetFramework>net10.0</BaseTargetFramework>
     </PropertyGroup>
 </Project>

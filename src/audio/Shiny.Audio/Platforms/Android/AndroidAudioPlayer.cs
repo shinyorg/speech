@@ -74,6 +74,57 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         }
     }
 
+    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    {
+        await StopAsync();
+
+        mediaPlayer = new MediaPlayer();
+        playbackTcs = new TaskCompletionSource();
+        mediaPlayer.Completion += OnCompletion;
+        mediaPlayer.Error += OnError;
+
+        try
+        {
+            // MediaPlayer resolves both remote http(s) URLs and local file paths natively.
+            await mediaPlayer.SetDataSourceAsync(source);
+
+            // PrepareAsync (not the blocking Prepare) so remote sources buffer off the calling thread.
+            var prepared = new TaskCompletionSource();
+            void OnPrepared(object? sender, EventArgs e) => prepared.TrySetResult();
+            void OnPrepareError(object? sender, MediaPlayer.ErrorEventArgs e)
+                => prepared.TrySetException(new InvalidOperationException($"Audio playback error: {e.What}"));
+
+            mediaPlayer.Prepared += OnPrepared;
+            mediaPlayer.Error += OnPrepareError;
+            mediaPlayer.PrepareAsync();
+
+            using var reg = cancellationToken.Register(() =>
+            {
+                try { mediaPlayer?.Stop(); } catch { /* player may not be started */ }
+                prepared.TrySetResult();
+                playbackTcs?.TrySetResult();
+            });
+
+            await prepared.Task;
+            mediaPlayer.Prepared -= OnPrepared;
+            mediaPlayer.Error -= OnPrepareError;
+
+            if (cancellationToken.IsCancellationRequested)
+                return;
+
+            mediaPlayer.Start();
+            AttachVisualizer(mediaPlayer.AudioSessionId);
+            logger.LogDebug("Android audio playback started ({Source})", source);
+
+            await playbackTcs.Task;
+            logger.LogDebug("Android audio playback finished");
+        }
+        finally
+        {
+            DetachVisualizer();
+        }
+    }
+
     void AttachVisualizer(int sessionId)
     {
         DetachVisualizer();

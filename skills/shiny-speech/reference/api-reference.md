@@ -234,8 +234,13 @@ Platform-native audio playback. Registered as singleton. Implements `IAsyncDispo
 ```csharp
 public interface IAudioPlayer : IAsyncDisposable
 {
-    // Play MP3 format audio from a stream
+    // Play audio (e.g. MP3) from a stream
     Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default);
+
+    // Play from a remote http/https URL or a local file path — the platform resolves the
+    // source natively (no platform-specific file URI needed). Remote sources stream on
+    // Android/Windows/Browser and are buffered on Apple.
+    Task PlayAsync(string source, CancellationToken cancellationToken = default);
 
     // Stop playback
     Task StopAsync();

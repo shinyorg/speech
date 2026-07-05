@@ -1,14 +1,23 @@
 namespace Shiny.Audio;
 
 /// <summary>
-/// Platform-specific audio playback for synthesized speech.
+/// Platform-specific audio playback.
 /// </summary>
 public interface IAudioPlayer : IAsyncDisposable
 {
     /// <summary>
-    /// Play an audio stream (MP3 format). Completes when playback finishes or is cancelled.
+    /// Play an audio stream (e.g. MP3). Completes when playback finishes or is cancelled.
     /// </summary>
     Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Play audio from a remote URL (<c>http</c>/<c>https</c>) or a local file path. The platform
+    /// determines how to load the source — you never need to build a platform-specific file URI.
+    /// Completes when playback finishes or is cancelled.
+    /// </summary>
+    /// <param name="source">An absolute <c>http</c>/<c>https</c> URL, or a local file system path.</param>
+    Task PlayAsync(string source, CancellationToken cancellationToken = default)
+        => PlaybackSource.PlayResolvedAsync(this, source, cancellationToken);
 
     /// <summary>
     /// Stop any current playback.

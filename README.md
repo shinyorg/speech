@@ -6,7 +6,7 @@ This repository is the home for two complementary library families:
 - **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
-The two are versioned independently (see `version.json` at the repo root for Shiny.Speech and `src/aiconversation/version.json` for Shiny.AiConversation).
+All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
 
 ## Libraries
 
@@ -74,6 +74,25 @@ public class MyService(ITextToSpeechService tts)
     }
 }
 ```
+
+### Playing Audio (`IAudioPlayer`)
+
+`IAudioPlayer` plays a `Stream`, or — via `PlayAsync(string)` — a **remote URL or a local file path**.
+You pass a plain URL/path; each platform resolves it natively, so you never build a platform-specific
+file URI:
+
+```csharp
+public class Player(IAudioPlayer audioPlayer)
+{
+    public Task PlayRemote() => audioPlayer.PlayAsync("https://example.com/clip.mp3");
+    public Task PlayLocal()  => audioPlayer.PlayAsync(Path.Combine(FileSystem.AppDataDirectory, "chime.mp3"));
+    public Task PlayStream(Stream mp3) => audioPlayer.PlayAsync(mp3);
+}
+```
+
+An absolute `http`/`https` value is treated as a remote source (progressively streamed on Android,
+Windows, and Browser; buffered on Apple); anything else is treated as a local file path. In the
+browser, a local path means an app-relative URL (there is no device file system).
 
 ### VU Meter (Audio Level)
 

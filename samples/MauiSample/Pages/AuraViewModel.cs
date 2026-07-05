@@ -113,7 +113,7 @@ public partial class AuraViewModel(
     void OnAiResponded(AiResponse response)
     {
         var usage = response.Response.Usage;
-        var burn = ChatViewModel.FormatTokenFooter(
+        var burn = AiChatTokens.FormatTokenFooter(
             usage?.InputTokenCount,
             usage?.OutputTokenCount,
             usage?.TotalTokenCount

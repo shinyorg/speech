@@ -39,6 +39,25 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
         await playTcs.Task;
     }
 
+    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    {
+        await BrowserJsModule.ImportAsync();
+        playTcs?.TrySetResult();
+        playTcs = new TaskCompletionSource();
+
+        // The browser Audio element loads remote URLs (and app-relative paths) directly.
+        PlayAudio(source);
+        logger.LogDebug("Browser audio playback started ({Source})", source);
+
+        cancellationToken.Register(() =>
+        {
+            StopAudio();
+            playTcs?.TrySetResult();
+        });
+
+        await playTcs.Task;
+    }
+
     public Task StopAsync()
     {
         StopAudio();

@@ -127,7 +127,7 @@ Shiny Speech provides:
 - Built-in keyword detection — set `Keywords` in `SpeechRecognitionOptions` and subscribe to `KeywordHeard`
 - Platform-native text-to-speech via `ITextToSpeechService` (iOS, Android, Windows, Browser/WASM)
 - Platform-native audio capture via `IAudioSource` (raw PCM 16kHz, 16-bit, mono — all platforms including browser)
-- Platform-native audio playback via `IAudioPlayer` (MP3 format; browser uses HTML5 Audio via base64 data URL)
+- Platform-native audio playback via `IAudioPlayer` — play a `Stream`, or a remote URL / local file path via `PlayAsync(string)` (platform resolves the source natively; browser uses HTML5 Audio)
 - Pluggable cloud provider architecture via `ISpeechToTextProvider` and `ITextToSpeechProvider`
 - Azure AI Speech integration (STT + TTS)
 - ElevenLabs integration (Scribe STT + TTS)
@@ -401,15 +401,22 @@ public class MyViewModel(IAudioSource audioSource)
 
 ### 4. Audio Playback
 
+`IAudioPlayer.PlayAsync` has two overloads: a `Stream`, or a `string` that is **either a remote
+`http`/`https` URL or a local file path**. Pass a plain URL/path — each platform resolves it natively;
+never construct a platform-specific file URI. Remote sources stream progressively on Android / Windows /
+Browser and are buffered on Apple. In the browser a "local path" means an app-relative URL (no device
+file system).
+
 ```csharp
 public class MyViewModel(IAudioPlayer audioPlayer)
 {
-    async Task PlayAudio(Stream mp3Stream, CancellationToken ct)
-    {
-        // Play MP3 format audio
-        await audioPlayer.PlayAsync(mp3Stream, ct);
+    Task PlayRemote(CancellationToken ct) => audioPlayer.PlayAsync("https://example.com/clip.mp3", ct);
+    Task PlayLocal(CancellationToken ct)  => audioPlayer.PlayAsync(Path.Combine(FileSystem.AppDataDirectory, "chime.mp3"), ct);
 
-        // Check playback state
+    async Task PlayStream(Stream mp3Stream, CancellationToken ct)
+    {
+        await audioPlayer.PlayAsync(mp3Stream, ct); // e.g. MP3
+
         if (audioPlayer.IsPlaying)
             await audioPlayer.StopAsync();
     }
