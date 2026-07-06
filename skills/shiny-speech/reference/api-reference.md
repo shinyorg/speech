@@ -7,6 +7,7 @@ dotnet add package Shiny.Speech
 dotnet add package Shiny.Audio                   # Referenced transitively by Shiny.Speech; add directly for audio-only use
 dotnet add package Shiny.Speech.Azure            # Optional: Azure AI Speech
 dotnet add package Shiny.Speech.ElevenLabs       # Optional: ElevenLabs STT (Scribe) + TTS
+dotnet add package Shiny.Speech.Typecast         # Optional: Typecast TTS (TTS only)
 ```
 
 ## Namespaces

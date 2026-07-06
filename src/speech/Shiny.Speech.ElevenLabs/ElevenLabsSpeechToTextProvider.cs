@@ -18,7 +18,7 @@ namespace Shiny.Speech.ElevenLabs;
 public class ElevenLabsSpeechToTextProvider(
     ElevenLabsConfig config,
     ILogger<ElevenLabsSpeechToTextProvider> logger
-) : ISpeechToTextProvider
+) : ISpeechToTextProvider, IDisposable
 {
     const int SampleRate = 16000;
     const short BitsPerSample = 16;
@@ -27,7 +27,8 @@ public class ElevenLabsSpeechToTextProvider(
     const int FrameSamples = SampleRate * FrameDurationMs / 1000; // 320
     const int FrameBytes = FrameSamples * (BitsPerSample / 8);    // 640
 
-    readonly HttpClient httpClient = CreateHttpClient(config);
+    // Rebuilds the HttpClient (which bakes in the xi-api-key header) if config.ApiKey changes at runtime.
+    readonly RefreshableClient<HttpClient> http = new(() => CreateHttpClient(config));
 
     public event EventHandler<SpeechRecognitionError>? Error;
 
@@ -40,6 +41,8 @@ public class ElevenLabsSpeechToTextProvider(
         client.DefaultRequestHeaders.Add("xi-api-key", config.ApiKey);
         return client;
     }
+
+    public void Dispose() => this.http.Dispose();
 
     public async IAsyncEnumerable<SpeechRecognitionResult> RecognizeAsync(
         Stream audioStream,
@@ -161,7 +164,7 @@ public class ElevenLabsSpeechToTextProvider(
         HttpResponseMessage response;
         try
         {
-            response = await httpClient.PostAsync("v1/speech-to-text", form, postCts.Token);
+            response = await this.http.Get(config.ApiKey).PostAsync("v1/speech-to-text", form, postCts.Token);
         }
         catch (Exception ex)
         {

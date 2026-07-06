@@ -22,6 +22,7 @@
         <File Path="LICENSE" />
         <File Path="nuget.png" />
         <File Path="README.md" />
+        <File Path="version.json" />
     </Folder>
     <Project Path="samples/MauiSample/MauiSample.csproj" />
     <Folder Name="/Speech/">
@@ -34,6 +35,7 @@
         <Project Path="src/speech/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj" />
         <Project Path="src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj" />
         <Project Path="src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
+        <Project Path="src/speech/Shiny.Speech.Typecast/Shiny.Speech.Typecast.csproj" />
         <Project Path="src/speech/Shiny.Speech/Shiny.Speech.csproj" />
         <File Path="skills\shiny-speech\SKILL.md" />
     </Folder>

@@ -9,9 +9,10 @@ namespace Shiny.Speech.ElevenLabs;
 public class ElevenLabsTextToSpeechProvider(
     ElevenLabsConfig config,
     ILogger<ElevenLabsTextToSpeechProvider> logger
-) : ITextToSpeechProvider
+) : ITextToSpeechProvider, IDisposable
 {
-    readonly HttpClient httpClient = CreateHttpClient(config);
+    // Rebuilds the HttpClient (which bakes in the xi-api-key header) if config.ApiKey changes at runtime.
+    readonly RefreshableClient<HttpClient> http = new(() => CreateHttpClient(config));
 
     static HttpClient CreateHttpClient(ElevenLabsConfig config)
     {
@@ -25,6 +26,7 @@ public class ElevenLabsTextToSpeechProvider(
 
     public async Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {
+        var httpClient = this.http.Get(config.ApiKey);
         var response = await httpClient.GetAsync("v1/voices", cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -56,6 +58,7 @@ public class ElevenLabsTextToSpeechProvider(
     public async Task<Stream> SynthesizeAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= new TextToSpeechOptions();
+        var httpClient = this.http.Get(config.ApiKey);
         var voiceId = options.Voice?.Id ?? config.DefaultVoiceId;
 
         var requestBody = new TtsRequest
@@ -80,6 +83,8 @@ public class ElevenLabsTextToSpeechProvider(
         logger.LogDebug("ElevenLabs TTS synthesized {Bytes} bytes", ms.Length);
         return ms;
     }
+
+    public void Dispose() => this.http.Dispose();
 
     sealed record VoicesResponse
     {

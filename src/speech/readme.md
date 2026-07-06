@@ -10,6 +10,7 @@ Cross-platform speech services for .NET MAUI and Blazor WebAssembly — speech-t
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
+| **Shiny.Speech.Typecast** | Typecast provider (TTS only) | net10.0 |
 
 ## Getting Started
 
@@ -38,6 +39,14 @@ builder.Services.AddElevenLabsSpeech("your-api-key");
 // Or pick one:
 builder.Services.AddElevenLabsSpeechToText("your-api-key");
 builder.Services.AddElevenLabsTextToSpeech("your-api-key");
+```
+
+### Typecast (Cloud, TTS only)
+
+```csharp
+builder.Services.AddTypecastSpeech("your-typecast-api-key");
+// Set a voice via TypecastConfig.DefaultVoiceId or TextToSpeechOptions.Voice;
+// GetVoicesAsync() lists the ids available to your account.
 ```
 
 ## Usage

@@ -55,6 +55,11 @@ triggers:
   - scribe_v1
   - AzureSpeechConfig
   - ElevenLabsConfig
+  - AddTypecastSpeech
+  - AddTypecastTextToSpeech
+  - Typecast
+  - TypecastConfig
+  - TypecastTextToSpeechProvider
   - CloudSpeechToText
   - CloudTextToSpeech
   - Shiny.Speech
@@ -62,6 +67,7 @@ triggers:
   - Shiny.Speech.Cloud
   - Shiny.Speech.Azure
   - Shiny.Speech.ElevenLabs
+  - Shiny.Speech.Typecast
   - PipeStream
   - IsListening
   - IsSpeaking
@@ -117,6 +123,7 @@ Invoke this skill when the user wants to:
 - `Shiny.Speech.Cloud` — Cloud provider abstractions
 - `Shiny.Speech.Azure` — Azure AI Speech provider
 - `Shiny.Speech.ElevenLabs` — ElevenLabs TTS provider
+- `Shiny.Speech.Typecast` — Typecast TTS provider (TTS only, via the `typecast-csharp` SDK)
 
 **Namespace**: `Shiny.Speech`
 
@@ -131,6 +138,7 @@ Shiny Speech provides:
 - Pluggable cloud provider architecture via `ISpeechToTextProvider` and `ITextToSpeechProvider`
 - Azure AI Speech integration (STT + TTS)
 - ElevenLabs integration (Scribe STT + TTS)
+- Typecast integration (TTS only)
 - Convenience extension methods: `ListenUntilSilence`, `StatementAfterKeyword`, `WaitListenForKeywords`, `ListenForKeywords`
 - Permission management via `AccessState` and `RequestAccess()`
 - VU meter signal — `AudioLevelChanged` event on `ITextToSpeechService` and `IAudioPlayer` emits a normalized 0.0–1.0 RMS level during playback; `IsPlayerAnalysisSupported` reports per-platform availability
@@ -218,6 +226,34 @@ builder.Services.AddElevenLabsSpeech(new ElevenLabsConfig
 ```
 
 > **ElevenLabs Scribe is request/response, not streaming**: results are yielded as a single final `SpeechRecognitionResult` when the user calls `Stop()` (the captured audio is buffered, wrapped in a WAV container, and posted to `/v1/speech-to-text`). For continuous partial results, use Azure instead.
+
+**Typecast (cloud TTS only — via the `typecast-csharp` SDK):**
+```csharp
+builder.Services.AddTypecastSpeech("your-typecast-api-key");
+// AddTypecastTextToSpeech(...) is an identical alias. Registers ITextToSpeechService + IAudioPlayer.
+
+// With a config object — model, default voice, language, emotion, audio format:
+builder.Services.AddTypecastSpeech(new TypecastConfig
+{
+    ApiKey = "your-typecast-api-key",
+    DefaultVoiceId = "<voice-id>",           // required unless you pass TextToSpeechOptions.Voice per call
+    Model = Typecast.Models.TTSModel.SsfmV30,
+    AudioFormat = Typecast.Models.AudioFormat.Mp3
+});
+```
+
+> **Typecast is TTS-only** — there is no `AddTypecastSpeechToText`; pair it with Azure/ElevenLabs/OpenAI or native STT if you need recognition. It has **no fixed default voice**: set `TypecastConfig.DefaultVoiceId` or pass `TextToSpeechOptions.Voice`, and call `ITextToSpeechService.GetVoicesAsync()` to discover the voice ids available to your account. `TypecastConfig` also exposes optional `Language`, `Emotion` (+`EmotionIntensity`) hints.
+
+**Changing API keys / credentials at runtime:**
+All cloud provider config objects (`AzureSpeechConfig`, `ElevenLabsConfig`, `OpenAiSpeechConfig`, `TypecastConfig`) are **mutable singletons**. Register them normally, then change the key (or region/model/voice) at any time — the provider uses the new value on its next call, no re-registration needed. Keep a reference to the config you pass in, or resolve it from DI:
+```csharp
+var config = new TypecastConfig { ApiKey = "initial" };
+builder.Services.AddTypecastSpeech(config);
+// ...later:
+config.ApiKey = "rotated-key";                              // via your retained reference
+serviceProvider.GetRequiredService<AzureSpeechConfig>().SubscriptionKey = "new-key"; // or resolve from DI
+```
+Providers that cache an SDK/HTTP client (ElevenLabs, Typecast) rebuild it automatically when the key changes (via `RefreshableClient<T>` in `Shiny.Speech.Cloud`); Azure and OpenAI read the config on every call. Do **not** re-call `AddXxxSpeech(...)` to change a key — just mutate the config.
 
 ### 3. Platform Permissions
 
@@ -522,4 +558,5 @@ dotnet add package Shiny.Speech                  # Core platform-native speech s
 dotnet add package Shiny.Speech.Cloud            # Cloud provider abstractions (included by Azure/ElevenLabs)
 dotnet add package Shiny.Speech.Azure            # Azure AI Speech provider
 dotnet add package Shiny.Speech.ElevenLabs       # ElevenLabs TTS provider
+dotnet add package Shiny.Speech.Typecast         # Typecast TTS provider (TTS only)
 ```

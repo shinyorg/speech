@@ -17,6 +17,7 @@ All packages share a single version, defined by `version.json` at the repo root 
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
+| **Shiny.Speech.Typecast** | Typecast provider (TTS only, via the `typecast-csharp` SDK) | net10.0 |
 | **Shiny.AiConversation** | Central `IAiConversationService` orchestrating chat + the full voice loop | net10.0 (+ MAUI platforms) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
@@ -55,6 +56,43 @@ builder.Services.AddElevenLabsSpeech("your-api-key");
 builder.Services.AddElevenLabsSpeechToText("your-api-key");
 builder.Services.AddElevenLabsTextToSpeech("your-api-key");
 ```
+
+### Typecast (Cloud, TTS only)
+
+```csharp
+builder.Services.AddTypecastSpeech("your-typecast-api-key");
+
+// Or configure the model / default voice / audio format:
+builder.Services.AddTypecastSpeech(new TypecastConfig
+{
+    ApiKey = "your-typecast-api-key",
+    DefaultVoiceId = "<voice-id>",   // call ITextToSpeechService.GetVoicesAsync() to discover ids
+    Model = TTSModel.SsfmV30
+});
+```
+
+> Typecast has no fixed public default voice — set `DefaultVoiceId` (or pass a `VoiceInfo` per call via
+> `TextToSpeechOptions.Voice`). Use `GetVoicesAsync()` to list the voice ids available to your account.
+
+### Changing credentials at runtime
+
+You configure providers exactly as above — but the config objects are **mutable singletons**, so you can
+change the API key (or region / model / voice) at any time and the provider picks it up on its next call.
+No re-registration required. Hold your config instance, or resolve it from DI:
+
+```csharp
+var config = new AzureSpeechConfig { SubscriptionKey = "initial-key", Region = "eastus" };
+builder.Services.AddAzureSpeech(config);
+
+// ...later, e.g. after the user pastes a new key in settings:
+config.SubscriptionKey = "rotated-key";        // next Speak/recognize uses it
+
+// Or resolve it from the container if you didn't keep a reference:
+serviceProvider.GetRequiredService<TypecastConfig>().ApiKey = "new-key";
+```
+
+Providers that cache an SDK/HTTP client (ElevenLabs, Typecast) transparently rebuild it when the key
+changes; Azure and OpenAI read the config on every call.
 
 ## Usage
 
