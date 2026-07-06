@@ -1,5 +1,7 @@
 @page "/settings"
 @inject IAiConversationService AiService
+@inject CloudProviderCredentials Creds
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Settings</PageTitle>
@@ -31,6 +33,28 @@
         </div>
     </div>
 
+    @if (Creds.IsActive)
+    {
+        <div class="settings-section">
+            <h3>@Creds.ProviderName API Credentials</h3>
+            <p class="settings-footer">Saved to your browser and reused on next launch; changes take effect on the next speech request.</p>
+            <div class="settings-card">
+                @foreach (var field in Creds.Fields)
+                {
+                    <div class="settings-row" style="flex-direction: column; align-items: stretch;">
+                        <label class="settings-label" for="@field.StoreKey">@field.Label</label>
+                        <input id="@field.StoreKey" type="text" @bind="field.Value" placeholder="Enter value" />
+                    </div>
+                }
+                <button class="btn-primary" @onclick="SaveKeys">Apply Keys</button>
+                @if (keysSaved)
+                {
+                    <span class="settings-value">Saved ✓</span>
+                }
+            </div>
+        </div>
+    }
+
     <div class="settings-section">
         <h3>Danger Zone</h3>
         <div class="settings-card">
@@ -43,11 +67,28 @@
 @code {
     string selectedAcknowledgement = "";
     string? statusMessage;
+    bool keysSaved;
 
     protected override void OnInitialized()
     {
         AiService.StatusChanged += OnStatusChanged;
         selectedAcknowledgement = AiService.Acknowledgement.ToString();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Make sure the fields reflect the persisted values even on a direct navigation to /settings.
+        if (firstRender && Creds.IsActive)
+        {
+            await Creds.RestoreFromStoreAsync(JS);
+            StateHasChanged();
+        }
+    }
+
+    async Task SaveKeys()
+    {
+        await Creds.SaveToStoreAsync(JS);
+        keysSaved = true;
     }
 
     void OnAcknowledgementChanged(ChangeEventArgs e)

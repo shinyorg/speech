@@ -41,17 +41,24 @@ public static class MauiProgram
             opts.SetSqliteDocDbMessageStore(dbPath);
         });
 
-        // To use Azure cloud speech instead:
+        // To use a 3rd-party cloud provider instead of native speech, uncomment one of these.
+        // Once active, the Settings page shows an editable "API Credentials" section (the config
+        // objects are mutable singletons, so keys can be changed at runtime).
+        // You can even pass an empty key here and paste it in Settings afterwards.
         // builder.Services.AddAzureSpeech("your-key", "your-region");
-
-        // To use ElevenLabs instead:
-        // builder.Services.AddElevenLabsSpeech("");
-
-        // builder.Services.AddElevenLabsTextToSpeech("your-api-key");
+        // builder.Services.AddElevenLabsSpeech("your-api-key");
+        // builder.Services.AddOpenAiSpeech("your-api-key");
+        // builder.Services.AddTypecastSpeech("your-api-key");
 
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
-        return builder.Build();
+        var app = builder.Build();
+
+        // Apply any cloud-provider credentials saved from the Settings page before the providers are
+        // first used, so a key entered in a previous session is restored on launch.
+        Pages.CloudProviderCredentials.Detect(app.Services).RestoreFromStore();
+
+        return app;
     }
 }

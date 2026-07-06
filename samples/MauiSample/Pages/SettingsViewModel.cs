@@ -8,9 +8,21 @@ using Shiny.Speech;
 
 namespace MauiSample.Pages;
 
-public partial class SettingsViewModel(IAiConversationService aiService, ContextProvider contextProvider, IDialogs dialogs)
+public partial class SettingsViewModel(
+    IAiConversationService aiService,
+    ContextProvider contextProvider,
+    IDialogs dialogs,
+    IServiceProvider services)
     : ObservableObject, IPageLifecycleAware
 {
+    readonly CloudProviderCredentials cloud = CloudProviderCredentials.Detect(services);
+
+    // API-key editor — only surfaces when a 3rd-party cloud provider (Azure/ElevenLabs/OpenAI/Typecast)
+    // is registered. Editing writes to the mutable provider config, taking effect on the next request.
+    public bool HasCloudProvider => this.cloud.IsActive;
+    public string CloudProviderName => this.cloud.ProviderName ?? "Cloud Provider";
+    public IReadOnlyList<CredentialField> CredentialFields => this.cloud.Fields;
+
     public string[] AcknowledgementOptions => Enum.GetNames<AiAcknowledgement>();
 
     public string SelectedAcknowledgementName
@@ -53,6 +65,10 @@ public partial class SettingsViewModel(IAiConversationService aiService, Context
         QuietWords.Clear();
         foreach (var word in contextProvider.GetQuietWords())
             QuietWords.Add(word);
+
+        // Re-sync the editable key fields with the current config values.
+        foreach (var field in this.cloud.Fields)
+            field.Reload();
 
         RefreshAll();
     }
@@ -148,6 +164,17 @@ public partial class SettingsViewModel(IAiConversationService aiService, Context
         {
             await dialogs.Alert("Error", ex.Message);
         }
+    }
+
+    [RelayCommand]
+    async Task SaveKeys()
+    {
+        foreach (var field in this.cloud.Fields)
+            field.Commit();
+
+        await dialogs.Alert(
+            "Saved",
+            $"{this.CloudProviderName} credentials saved. They take effect on the next speech request and persist across restarts.");
     }
 
     [RelayCommand]

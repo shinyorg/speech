@@ -12,6 +12,10 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\speech\Shiny.Speech\Shiny.Speech.csproj" />
+        <!-- HTTP-based cloud speech providers work in the browser (Azure uses a native SDK, so it's omitted here) -->
+        <ProjectReference Include="..\..\src\speech\Shiny.Speech.ElevenLabs\Shiny.Speech.ElevenLabs.csproj" />
+        <ProjectReference Include="..\..\src\speech\Shiny.Speech.OpenAI\Shiny.Speech.OpenAI.csproj" />
+        <ProjectReference Include="..\..\src\speech\Shiny.Speech.Typecast\Shiny.Speech.Typecast.csproj" />
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation\Shiny.AiConversation.csproj" />
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.OpenAi\Shiny.AiConversation.OpenAi.csproj" />
     </ItemGroup>

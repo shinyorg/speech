@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject BlazorSample.Services.CloudProviderCredentials Creds
+@inject IJSRuntime JS
 
 <div class="app-container">
     <main class="page-content">
@@ -24,3 +26,12 @@
         </NavLink>
     </nav>
 </div>
+
+@code {
+    // Restore any saved cloud-provider credentials once at startup, before speech features are used.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Creds.IsActive)
+            await Creds.RestoreFromStoreAsync(JS);
+    }
+}

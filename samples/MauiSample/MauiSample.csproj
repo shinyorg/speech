@@ -42,6 +42,7 @@
         <ProjectReference Include="..\..\src\speech\Shiny.Speech.ElevenLabs\Shiny.Speech.ElevenLabs.csproj"/>
         <ProjectReference Include="..\..\src\speech\Shiny.Speech.MicrosoftAI\Shiny.Speech.MicrosoftAI.csproj"/>
         <ProjectReference Include="..\..\src\speech\Shiny.Speech.OpenAI\Shiny.Speech.OpenAI.csproj"/>
+        <ProjectReference Include="..\..\src\speech\Shiny.Speech.Typecast\Shiny.Speech.Typecast.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.MessageStores.SqliteDocDb\Shiny.AiConversation.MessageStores.SqliteDocDb.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui.GithubCopilot\Shiny.AiConversation.Maui.GithubCopilot.csproj"/>

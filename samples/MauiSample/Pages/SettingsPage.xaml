@@ -62,6 +62,38 @@
                 </sc:TableView.Root>
             </sc:TableView>
 
+            <!-- Cloud provider API keys — only shown when a 3rd-party provider is active -->
+            <VerticalStackLayout IsVisible="{Binding HasCloudProvider}"
+                                 Padding="16,8"
+                                 Spacing="10">
+                <Label Text="{Binding CloudProviderName, StringFormat='{0} API Credentials'}"
+                       FontAttributes="Bold"
+                       FontSize="16" />
+                <Label Text="Update the key(s) below; changes take effect on the next speech request."
+                       FontSize="12"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray400}}" />
+
+                <CollectionView ItemsSource="{Binding CredentialFields}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="pages:CredentialField">
+                            <VerticalStackLayout Padding="0,6"
+                                                 Spacing="4">
+                                <Label Text="{Binding Label}"
+                                       FontSize="13"
+                                       FontAttributes="Bold" />
+                                <Entry Text="{Binding Value, Mode=TwoWay}"
+                                       Placeholder="Enter value"
+                                       BackgroundColor="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}" />
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Button Text="Apply Keys"
+                        Command="{Binding SaveKeysCommand}"
+                        HeightRequest="44" />
+            </VerticalStackLayout>
+
             <Grid ColumnDefinitions="*,Auto" Padding="16,8">
                 <Label Text="Quiet Words"
                        FontAttributes="Bold"
