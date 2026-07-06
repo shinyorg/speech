@@ -9,14 +9,18 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
 {
     static PipeStream? activePipe;
 
-    public async Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default)
+    public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
         await BrowserJsModule.ImportAsync();
 
         var pipe = new PipeStream();
         activePipe = pipe;
 
-        await StartMicrophoneCaptureAsync();
+        await StartMicrophoneCaptureAsync(
+            processing?.EchoCancellation ?? false,
+            processing?.NoiseSuppression ?? false,
+            processing?.AutomaticGainControl ?? false
+        );
         logger.LogDebug("Browser audio capture started");
 
         return pipe;
@@ -38,7 +42,11 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
     }
 
     [JSImport("shinySpeech.startMicrophoneCapture", "shiny-speech")]
-    private static partial Task StartMicrophoneCaptureAsync();
+    private static partial Task StartMicrophoneCaptureAsync(
+        bool echoCancellation,
+        bool noiseSuppression,
+        bool autoGainControl
+    );
 
     [JSImport("shinySpeech.stopMicrophoneCapture", "shiny-speech")]
     private static partial void StopMicrophoneCapture();

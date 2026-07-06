@@ -59,7 +59,7 @@ public class CloudSpeechToText : ISpeechToTextService
         lastKeywordFinalTime = default;
         cts = new CancellationTokenSource();
 
-        var audioStream = await audioSource.StartCaptureAsync(cts.Token);
+        var audioStream = await audioSource.StartCaptureAsync(options.AudioProcessing, cts.Token);
         IsListening = true;
         logger.LogDebug("Audio capture started for cloud speech recognition");
 

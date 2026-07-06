@@ -193,10 +193,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 
 ### Browser (Blazor WebAssembly)
 
-No manifest changes needed — the browser prompts the user for microphone access automatically. Include the JS interop module in your `index.html`:
-```html
-<script src="shiny-speech.js"></script>
-```
+No manifest changes and **no `<script>` tag** needed — the browser prompts the user for microphone access automatically, and the JS interop module ships **inside the `Shiny.Audio` package** as a static web asset (`_content/Shiny.Audio/shiny-audio.js`). It is loaded on demand via `JSHost.ImportAsync`, so referencing `Shiny.Speech` (or `Shiny.Audio` directly) is all that's required.
 
 > **Note:** `IAudioSource` captures raw PCM audio in the browser using the Web Audio API (`getUserMedia` + `ScriptProcessorNode`), downsampled to 16kHz 16-bit mono. Audio playback (`IAudioPlayer`) accepts any browser-supported format via a base64 data URL.
 

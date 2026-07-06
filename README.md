@@ -198,6 +198,45 @@ public class MyService(ISpeechToTextService stt) : IDisposable
 }
 ```
 
+### Voice Processing (Noise Suppression & Echo Cancellation)
+
+Microphone capture can request platform voice-processing effects to strip background noise and,
+critically, to **cancel your text-to-speech output from the mic** so it isn't re-captured while the
+mic is open (barge-in). Configure it via `AudioProcessingOptions` — either directly on
+`IAudioSource.StartCaptureAsync(...)` or through `SpeechRecognitionOptions.AudioProcessing` (honored
+by the cloud providers, which capture through `IAudioSource`):
+
+```csharp
+await stt.Start(new SpeechRecognitionOptions
+{
+    Culture = CultureInfo.GetCultureInfo("en-US"),
+    AudioProcessing = AudioProcessingOptions.VoiceChat   // AEC + noise suppression + AGC
+});
+
+// or, capturing raw audio directly:
+var stream = await audioSource.StartCaptureAsync(new AudioProcessingOptions
+{
+    EchoCancellation = true,      // subtracts speaker/TTS output from the mic signal
+    NoiseSuppression = true,      // attenuates steady background noise
+    AutomaticGainControl = true   // normalizes capture level
+});
+```
+
+Each flag is **best-effort** and maps to native voice processing:
+
+| Effect | iOS / macOS | Android | Windows | Browser |
+|---|---|---|---|---|
+| Echo Cancellation | ✅ Voice-Processing I/O | ✅ `AcousticEchoCanceler` + VoiceCommunication | ⚠️ best-effort (Communications pipeline) | ✅ WebRTC AEC3 |
+| Noise Suppression | ✅ (bundled) | ✅ `NoiseSuppressor` | ⚠️ best-effort | ✅ |
+| Automatic Gain Control | ✅ (bundled) | ✅ `AutomaticGainControl` | ⚠️ best-effort | ✅ |
+
+Notes:
+- **Apple** bundles all three into a single Voice-Processing I/O unit — enabling any flag enables the whole chain (they can't be toggled independently).
+- **Android** effect availability is device/driver dependent; unavailable effects are skipped. Requesting echo cancellation also routes capture through `VoiceCommunication`.
+- **Windows** `AudioGraph` exposes no per-effect control; requesting any effect selects the `Communications` capture category, which engages driver-provided AEC/NS when present.
+- These are **OS/hardware** cancellers referencing the real speaker feed, so any device audio (not just library-played TTS) is cancelled.
+- **Native on-device** `ISpeechToTextService` implementations manage their own microphone and are unaffected by this setting — it applies to `IAudioSource` capture (cloud providers, raw capture).
+
 ### Extension Methods (Convenience)
 
 ```csharp
@@ -257,10 +296,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 
 ### Browser (Blazor WebAssembly)
 
-No manifest changes needed — the browser prompts the user for microphone access automatically. Include the JS interop module in your `index.html`:
-```html
-<script src="shiny-speech.js"></script>
-```
+No manifest changes and **no `<script>` tag** needed — the browser prompts the user for microphone access automatically, and the JS interop module ships **inside the `Shiny.Audio` package** as a static web asset (`_content/Shiny.Audio/shiny-audio.js`). It is loaded on demand via `JSHost.ImportAsync`, so referencing `Shiny.Speech` (or `Shiny.Audio` directly) is all that's required.
 
 > **Note:** `IAudioSource` captures raw PCM audio in the browser using the Web Audio API (`getUserMedia` + `ScriptProcessorNode`), downsampled to 16kHz 16-bit mono. Audio playback (`IAudioPlayer`) accepts any browser-supported format via a base64 data URL.
 

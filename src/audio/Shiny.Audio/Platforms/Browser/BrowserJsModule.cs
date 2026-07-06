@@ -7,7 +7,9 @@ namespace Shiny.Audio;
 internal static class BrowserJsModule
 {
     const string ModuleName = "shiny-speech";
-    const string ModulePath = "../shiny-speech.js";
+    // Static web asset shipped in the Shiny.Audio package. The path is relative to the
+    // WASM runtime (_framework/), so "../" reaches the app root where _content is served.
+    const string ModulePath = "../_content/Shiny.Audio/shiny-audio.js";
 
     static Task? importTask;
 

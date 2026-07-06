@@ -14,9 +14,17 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
     AudioFrameOutputNode? outputNode;
     PipeStream? pipe;
 
-    public async Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default)
+    public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
         var encoding = AudioEncodingProperties.CreatePcm(16000, 1, 16);
+
+        // AudioGraph only exposes Raw vs Default capture processing (no per-effect control).
+        // The Communications capture category requests the endpoint's voice pipeline, which
+        // engages driver-provided AEC/NS when available; Speech is used for raw capture.
+        var wantsProcessing = processing?.AnyEnabled == true;
+        var captureCategory = wantsProcessing
+            ? Windows.Media.Capture.MediaCategory.Communications
+            : Windows.Media.Capture.MediaCategory.Speech;
 
         var settings = new AudioGraphSettings(AudioRenderCategory.Speech)
         {
@@ -30,8 +38,7 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
 
         audioGraph = graphResult.Graph;
 
-        var inputResult = await audioGraph.CreateDeviceInputNodeAsync(
-            Windows.Media.Capture.MediaCategory.Speech, encoding);
+        var inputResult = await audioGraph.CreateDeviceInputNodeAsync(captureCategory, encoding);
         if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
             throw new InvalidOperationException($"Failed to create input node: {inputResult.Status}");
 

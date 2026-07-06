@@ -8,10 +8,19 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
     AVAudioEngine? audioEngine;
     Stream? outputStream;
 
-    public Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default)
+    public Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
         audioEngine = new AVAudioEngine();
         var inputNode = audioEngine.InputNode;
+
+        // Apple's voice-processing I/O unit bundles AEC + noise suppression + AGC and cannot
+        // toggle them independently, so any requested effect enables the whole chain. Must be
+        // set before the engine is prepared/started, otherwise the format is already locked.
+        if (processing?.AnyEnabled == true)
+        {
+            if (!inputNode.SetVoiceProcessingEnabled(true, out var vpError))
+                logger.LogWarning("Failed to enable voice processing (AEC/NS/AGC): {Error}", vpError?.LocalizedDescription);
+        }
 
         var desiredFormat = new AVAudioFormat(
             AVAudioCommonFormat.PCMInt16,

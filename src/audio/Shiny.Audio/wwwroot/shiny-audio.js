@@ -1,4 +1,10 @@
-// Shiny.Speech browser interop module for Web Speech API
+// Shiny.Speech / Shiny.Audio browser interop module.
+// Ships as a static web asset with the Shiny.Audio package and is loaded via
+// JSHost.ImportAsync from Shiny.Audio.BrowserJsModule — no <script> tag required.
+//
+// Callbacks are dispatched to two assemblies:
+//   - Shiny.Audio  → BrowserAudioSource (raw PCM capture)
+//   - Shiny.Speech → BrowserSpeechToTextService / BrowserTextToSpeechService (Web Speech API)
 let recognition = null;
 let audioElement = null;
 let recognitionStopped = false;
@@ -7,9 +13,9 @@ let micStream = null;
 let micWorklet = null;
 let micSource = null;
 
-function getExports() {
+function getExports(assembly) {
     const { getAssemblyExports } = globalThis.getDotnetRuntime(0);
-    return getAssemblyExports("Shiny.Speech");
+    return getAssemblyExports(assembly);
 }
 
 export const shinySpeech = {
@@ -103,7 +109,7 @@ export const shinySpeech = {
                     const isFinal = result.isFinal;
                     const confidence = result[0].confidence;
 
-                    getExports().then(exports => {
+                    getExports("Shiny.Speech").then(exports => {
                         exports.Shiny.Speech.BrowserSpeechToTextService.OnResult(text, isFinal, confidence);
                     });
                 }
@@ -112,7 +118,7 @@ export const shinySpeech = {
             recognition.onend = () => {
                 if (recognitionStopped) {
                     console.log('[Shiny.Speech] Recognition ended (stopped)');
-                    getExports().then(exports => {
+                    getExports("Shiny.Speech").then(exports => {
                         exports.Shiny.Speech.BrowserSpeechToTextService.OnEnd();
                     });
                 } else if (continuous) {
@@ -120,7 +126,7 @@ export const shinySpeech = {
                     setTimeout(() => createAndStart(), 250);
                 } else {
                     console.log('[Shiny.Speech] Recognition ended (single mode)');
-                    getExports().then(exports => {
+                    getExports("Shiny.Speech").then(exports => {
                         exports.Shiny.Speech.BrowserSpeechToTextService.OnEnd();
                     });
                 }
@@ -143,7 +149,7 @@ export const shinySpeech = {
                 }
                 // Fatal errors
                 recognitionStopped = true;
-                getExports().then(exports => {
+                getExports("Shiny.Speech").then(exports => {
                     exports.Shiny.Speech.BrowserSpeechToTextService.OnError(event.error);
                 });
             };
@@ -154,7 +160,7 @@ export const shinySpeech = {
             } catch (e) {
                 console.error('[Shiny.Speech] Failed to start recognition:', e.message);
                 recognitionStopped = true;
-                getExports().then(exports => {
+                getExports("Shiny.Speech").then(exports => {
                     exports.Shiny.Speech.BrowserSpeechToTextService.OnError(e.message);
                 });
             }
@@ -207,7 +213,7 @@ export const shinySpeech = {
         }
 
         utterance.onend = () => {
-            getExports().then(exports => {
+            getExports("Shiny.Speech").then(exports => {
                 exports.Shiny.Speech.BrowserTextToSpeechService.OnSpeakEnd();
             });
         };
@@ -220,13 +226,20 @@ export const shinySpeech = {
     },
 
     // --- Raw Audio Capture (Microphone → PCM) ---
-    async startMicrophoneCapture() {
+    async startMicrophoneCapture(echoCancellation, noiseSuppression, autoGainControl) {
+        // WebRTC voice processing: echoCancellation cancels audio the page renders (e.g. TTS
+        // playing while the mic is open), so barge-in doesn't re-capture the spoken output.
+        const audioConstraints = {
+            echoCancellation: !!echoCancellation,
+            noiseSuppression: !!noiseSuppression,
+            autoGainControl: !!autoGainControl
+        };
         try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
         } catch (e) {
             console.error('[Shiny.Speech] Microphone access denied:', e.message);
-            getExports().then(exports => {
-                exports.Shiny.Speech.BrowserAudioSource.OnCaptureError('mic-denied');
+            getExports("Shiny.Audio").then(exports => {
+                exports.Shiny.Audio.BrowserAudioSource.OnCaptureError('mic-denied');
             });
             return;
         }
@@ -258,14 +271,14 @@ export const shinySpeech = {
             }
 
             const bytes = new Uint8Array(int16.buffer);
-            getExports().then(exports => {
-                exports.Shiny.Speech.BrowserAudioSource.OnAudioData(bytes);
+            getExports("Shiny.Audio").then(exports => {
+                exports.Shiny.Audio.BrowserAudioSource.OnAudioData(bytes);
             });
         };
 
         micSource.connect(micWorklet);
         micWorklet.connect(micAudioContext.destination);
-        console.log('[Shiny.Speech] Microphone capture started', { inputSampleRate, targetSampleRate });
+        console.log('[Shiny.Speech] Microphone capture started', { inputSampleRate, targetSampleRate, audioConstraints });
     },
 
     stopMicrophoneCapture() {

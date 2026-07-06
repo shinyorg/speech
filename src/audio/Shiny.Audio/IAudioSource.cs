@@ -16,7 +16,12 @@ public interface IAudioSource : IAsyncDisposable
     /// Start capturing audio from the microphone.
     /// Returns a stream of raw PCM audio data (16kHz, 16-bit, mono).
     /// </summary>
-    Task<Stream> StartCaptureAsync(CancellationToken cancellationToken = default);
+    /// <param name="processing">
+    /// Optional platform voice-processing effects (echo cancellation, noise suppression,
+    /// automatic gain control) to apply to the capture session. <c>null</c> captures raw
+    /// input. Effects are best-effort and device-dependent.
+    /// </param>
+    Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stop capturing audio.
