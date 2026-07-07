@@ -69,7 +69,13 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         session.SetActive(true, out _);
 #endif
 
-        playbackTcs = new TaskCompletionSource();
+        // RunContinuationsAsynchronously is critical: OnFinishedPlaying runs on AVAudioPlayer's native
+        // FinishedPlaying callback. Without this, the await below resumes inline on that callback stack,
+        // and the downstream code (e.g. the next StopAsync) would Dispose() this player while the native
+        // callback is still executing — which the runtime reports as "player object was Dispose()d during
+        // the callback ... corrupted the state of the program". Async continuations unwind the native
+        // callback first, so disposal always happens on a clean stack.
+        playbackTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.FinishedPlaying += OnFinishedPlaying;
 
         using var reg = cancellationToken.Register(() =>
@@ -86,7 +92,10 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         logger.LogDebug("Apple audio playback finished");
 
         StopMeterTimer();
-        player.FinishedPlaying -= OnFinishedPlaying;
+        // Only clean up if StopAsync/DisposeAsync hasn't already torn this player down (it nulls the
+        // field and detaches/disposes). Touching a disposed player here would itself throw.
+        if (ReferenceEquals(player, newPlayer))
+            newPlayer.FinishedPlaying -= OnFinishedPlaying;
     }
 
     void StartMeterTimer()
@@ -135,11 +144,13 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
     public Task StopAsync()
     {
         StopMeterTimer();
-        if (player != null)
+        var p = player;
+        if (p != null)
         {
-            player.Stop();
-            player.Dispose();
             player = null;
+            p.FinishedPlaying -= OnFinishedPlaying;
+            p.Stop();
+            p.Dispose();
             playbackTcs?.TrySetResult();
             logger.LogDebug("Apple audio playback stopped");
         }
@@ -149,9 +160,14 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
     public ValueTask DisposeAsync()
     {
         StopMeterTimer();
-        player?.Stop();
-        player?.Dispose();
-        player = null;
+        var p = player;
+        if (p != null)
+        {
+            player = null;
+            p.FinishedPlaying -= OnFinishedPlaying;
+            p.Stop();
+            p.Dispose();
+        }
         return ValueTask.CompletedTask;
     }
 }
