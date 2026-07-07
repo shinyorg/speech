@@ -5,8 +5,9 @@ using Shiny.AiConversation;
 using Shiny.Audio;
 using Shiny.Speech;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Aura;
 
+[ShellMap<AuraPage>("aura")]
 public partial class AuraViewModel(
     IAiConversationService aiService,
     ITextToSpeechService tts,

@@ -1,11 +1,13 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Shiny;
 using Shiny.Audio;
 using Shiny.Speech;
 
-namespace MauiSample;
+namespace MauiSample.Features.SpeechToText;
 
+[ShellMap<SpeechToTextPage>("SpeechToText")]
 public partial class SpeechToTextViewModel : ObservableObject
 {
     readonly ISpeechToTextService stt;

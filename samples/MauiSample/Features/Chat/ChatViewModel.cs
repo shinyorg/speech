@@ -1,8 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Shiny;
 using Shiny.AiConversation;
 using Shiny.Maui.Controls.Chat;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Chat;
 
 /// <summary>
 /// The new <see cref="ChatView"/> is provider-driven: instead of binding a message collection and
@@ -10,7 +11,8 @@ namespace MauiSample.Pages;
 /// <c>SessionId</c> and drives everything itself. The provider here is <c>new</c>'d up over
 /// <see cref="IAiConversationService"/> — see <see cref="AiConversationChatSessionProvider"/>.
 /// </summary>
-public class ChatViewModel(IAiConversationService aiService) : ObservableObject
+[ShellMap<ChatPage>("chat")]
+public partial class ChatViewModel(IAiConversationService aiService) : ObservableObject
 {
     public IChatSessionProvider Provider { get; } = new AiConversationChatSessionProvider(aiService);
     public string SessionId => AiConversationChatSessionProvider.DefaultSessionId;

@@ -1,7 +1,7 @@
 using Shiny.AiConversation;
 using Shiny.Maui.Controls;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Aura;
 
 public partial class AuraPage : ShinyContentPage
 {

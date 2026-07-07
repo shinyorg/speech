@@ -2,20 +2,23 @@
 <shiny:ShinyShell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                   xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                   xmlns:shiny="clr-namespace:Shiny;assembly=Shiny.Maui.Shell"
-                  xmlns:local="clr-namespace:MauiSample"
-                  xmlns:pages="clr-namespace:MauiSample.Pages"
+                  xmlns:stt="clr-namespace:MauiSample.Features.SpeechToText"
+                  xmlns:tts="clr-namespace:MauiSample.Features.TextToSpeech"
+                  xmlns:aura="clr-namespace:MauiSample.Features.Aura"
+                  xmlns:chat="clr-namespace:MauiSample.Features.Chat"
+                  xmlns:settings="clr-namespace:MauiSample.Features.Settings"
                   x:Class="MauiSample.AppShell"
                   Title="Shiny Speech">
 
     <TabBar Route="main">
         <ShellContent Title="Speech to Text"
                       Icon="mic.png"
-                      ContentTemplate="{DataTemplate local:SpeechToTextPage}" />
+                      ContentTemplate="{DataTemplate stt:SpeechToTextPage}" />
         <ShellContent Title="Text to Speech"
                       Icon="speaker.png"
-                      ContentTemplate="{DataTemplate local:TextToSpeechPage}" />
+                      ContentTemplate="{DataTemplate tts:TextToSpeechPage}" />
         <ShellContent Title="Aura"
-                      ContentTemplate="{DataTemplate pages:AuraPage}"
+                      ContentTemplate="{DataTemplate aura:AuraPage}"
                       Route="aura">
             <ShellContent.Icon>
                 <FontImageSource Glyph="&#x25C9;"
@@ -24,7 +27,7 @@
             </ShellContent.Icon>
         </ShellContent>
         <ShellContent Title="Chat"
-                      ContentTemplate="{DataTemplate pages:ChatPage}"
+                      ContentTemplate="{DataTemplate chat:ChatPage}"
                       Route="chat">
             <ShellContent.Icon>
                 <FontImageSource Glyph="&#x1F4AC;"
@@ -33,7 +36,7 @@
             </ShellContent.Icon>
         </ShellContent>
         <ShellContent Title="AI Settings"
-                      ContentTemplate="{DataTemplate pages:SettingsPage}"
+                      ContentTemplate="{DataTemplate settings:SettingsPage}"
                       Route="settings">
             <ShellContent.Icon>
                 <FontImageSource Glyph="&#x2699;"

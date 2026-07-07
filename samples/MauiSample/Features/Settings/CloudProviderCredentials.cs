@@ -6,7 +6,7 @@ using Shiny.Speech.ElevenLabs;
 using Shiny.Speech.OpenAI;
 using Shiny.Speech.Typecast;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Settings;
 
 /// <summary>
 /// Persists cloud-provider credentials in the MAUI <see cref="Preferences"/> store so they survive

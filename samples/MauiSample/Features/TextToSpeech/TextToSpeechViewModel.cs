@@ -5,8 +5,9 @@ using CommunityToolkit.Mvvm.Input;
 using Shiny;
 using Shiny.Speech;
 
-namespace MauiSample;
+namespace MauiSample.Features.TextToSpeech;
 
+[ShellMap<TextToSpeechPage>("TextToSpeech")]
 public partial class TextToSpeechViewModel : ObservableObject, IPageLifecycleAware
 {
     readonly ITextToSpeechService tts;

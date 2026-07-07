@@ -1,4 +1,4 @@
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Chat;
 
 public partial class ChatPage : ContentPage
 {

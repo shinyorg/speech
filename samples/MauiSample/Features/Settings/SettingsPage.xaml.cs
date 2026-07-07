@@ -1,4 +1,4 @@
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Settings;
 
 public partial class SettingsPage : ContentPage
 {

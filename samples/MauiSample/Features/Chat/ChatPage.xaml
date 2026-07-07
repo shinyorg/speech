@@ -2,9 +2,9 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:shiny="http://shiny.net/maui/controls"
-             xmlns:pages="clr-namespace:MauiSample.Pages"
-             x:Class="MauiSample.Pages.ChatPage"
-             x:DataType="pages:ChatViewModel"
+             xmlns:local="clr-namespace:MauiSample.Features.Chat"
+             x:Class="MauiSample.Features.Chat.ChatPage"
+             x:DataType="local:ChatViewModel"
              Title="Chat">
 
     <shiny:ChatView Provider="{Binding Provider}"

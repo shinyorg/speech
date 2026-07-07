@@ -1,32 +1,31 @@
 <Project>
-    <PropertyGroup>
-        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    </PropertyGroup>
-    <ItemGroup>
-        <PackageVersion Include="Nerdbank.GitVersioning" Version="3.9.50"/>
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0"/>
-        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0"/>
-        <PackageVersion Include="Microsoft.CognitiveServices.Speech" Version="1.50.0"/>
-        <PackageVersion Include="Xamarin.AndroidX.Core" Version="1.18.0"/>
-        <PackageVersion Include="Xamarin.AndroidX.Fragment" Version="1.8.8.1"/>
-        <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.80"/>
-        <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0"/>
-        <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0"/>
-        <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.7.0"/>
-        <PackageVersion Include="Shiny.DocumentDb.Extensions.DependencyInjection" Version="10.0.2"/>
-        <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="10.0.2"/>
-        <PackageVersion Include="OpenAI" Version="2.12.0"/>
-        <PackageVersion Include="typecast-csharp" Version="0.3.7"/>
-    </ItemGroup>
-    <ItemGroup>
-        <PackageVersion Include="Shiny.Maui.Shell" Version="6.3.1"/>
-        <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
-        <PackageVersion Include="Redth.MauiDevFlow.Agent" Version="0.23.1"/>
-        <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.9"/>
-        <PackageVersion Include="Shiny.Maui.Controls" Version="1.0.1-beta-0142"/>
-        <PackageVersion Include="Imposter" Version="0.1.9"/>
-        <PackageVersion Include="TUnit" Version="1.58.0"/>
-    </ItemGroup>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Nerdbank.GitVersioning" Version="3.9.50" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.CognitiveServices.Speech" Version="1.50.0" />
+    <PackageVersion Include="Xamarin.AndroidX.Core" Version="1.18.0" />
+    <PackageVersion Include="Xamarin.AndroidX.Fragment" Version="1.8.8.1" />
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.80" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.7.0" />
+    <PackageVersion Include="Shiny.DocumentDb.Extensions.DependencyInjection" Version="10.0.2" />
+    <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="10.0.2" />
+    <PackageVersion Include="OpenAI" Version="2.12.0" />
+    <PackageVersion Include="typecast-csharp" Version="0.3.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageVersion Include="Shiny.Maui.Shell" Version="6.3.2" />
+    <PackageVersion Include="Shiny.Maui.Controls" Version="1.0.1-beta-0142" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.9" />
+    <PackageVersion Include="Imposter" Version="0.1.9" />
+    <PackageVersion Include="TUnit" Version="1.58.0" />
+  </ItemGroup>
 </Project>

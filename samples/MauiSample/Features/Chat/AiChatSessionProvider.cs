@@ -1,9 +1,8 @@
 using System.Collections.Concurrent;
-using System.Globalization;
 using Shiny.AiConversation;
 using Shiny.Maui.Controls.Chat;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Chat;
 
 /// <summary>
 /// Bridges the new provider-driven <see cref="ChatView"/> onto <see cref="IAiConversationService"/>.
@@ -223,30 +222,5 @@ sealed class AiConversationChatSession : IChatSession
     {
         this.ai.AiResponded -= this.OnAiResponded;
         return ValueTask.CompletedTask;
-    }
-}
-
-
-/// <summary>Formats the per-message token-usage footer shared by the chat and Aura screens.</summary>
-static class AiChatTokens
-{
-    public static string AppendTokenFooter(string body, long? input, long? output, long? total)
-    {
-        var footer = FormatTokenFooter(input, output, total);
-        return footer is null ? body : body + "\n\n— " + footer;
-    }
-
-    public static string? FormatTokenFooter(long? input, long? output, long? total)
-    {
-        if (total is null && input is null && output is null)
-            return null;
-
-        var ci = CultureInfo.InvariantCulture;
-        var totalStr = (total ?? ((input ?? 0) + (output ?? 0))).ToString("N0", ci);
-
-        if (input.HasValue && output.HasValue)
-            return $"{totalStr} tokens ({input.Value.ToString("N0", ci)} in · {output.Value.ToString("N0", ci)} out)";
-
-        return $"{totalStr} tokens";
     }
 }

@@ -6,14 +6,15 @@ using Shiny.AiConversation;
 using Shiny.Audio;
 using Shiny.Speech;
 
-namespace MauiSample.Pages;
+namespace MauiSample.Features.Settings;
 
+[ShellMap<SettingsPage>("settings")]
 public partial class SettingsViewModel(
     IAiConversationService aiService,
     ContextProvider contextProvider,
     IDialogs dialogs,
-    IServiceProvider services)
-    : ObservableObject, IPageLifecycleAware
+    IServiceProvider services
+) : ObservableObject, IPageLifecycleAware
 {
     readonly CloudProviderCredentials cloud = CloudProviderCredentials.Detect(services);
 

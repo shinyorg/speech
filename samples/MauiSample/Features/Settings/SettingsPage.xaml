@@ -2,9 +2,9 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:sc="http://shiny.net/maui/controls"
-             xmlns:pages="clr-namespace:MauiSample.Pages"
-             x:Class="MauiSample.Pages.SettingsPage"
-             x:DataType="pages:SettingsViewModel"
+             xmlns:local="clr-namespace:MauiSample.Features.Settings"
+             x:Class="MauiSample.Features.Settings.SettingsPage"
+             x:DataType="local:SettingsViewModel"
              Title="Settings">
 
     <ScrollView>
@@ -75,7 +75,7 @@
 
                 <CollectionView ItemsSource="{Binding CredentialFields}">
                     <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="pages:CredentialField">
+                        <DataTemplate x:DataType="local:CredentialField">
                             <VerticalStackLayout Padding="0,6"
                                                  Spacing="4">
                                 <Label Text="{Binding Label}"
@@ -114,7 +114,7 @@
                                 <SwipeItems>
                                     <SwipeItem Text="Delete"
                                                BackgroundColor="{StaticResource Danger}"
-                                               Command="{Binding Source={RelativeSource AncestorType={x:Type pages:SettingsViewModel}}, Path=RemoveQuietWordCommand}"
+                                               Command="{Binding Source={RelativeSource AncestorType={x:Type local:SettingsViewModel}}, Path=RemoveQuietWordCommand}"
                                                CommandParameter="{Binding}" />
                                 </SwipeItems>
                             </SwipeView.RightItems>
@@ -123,7 +123,7 @@
                                   BackgroundColor="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type pages:SettingsViewModel}}, Path=EditQuietWordCommand}"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type local:SettingsViewModel}}, Path=EditQuietWordCommand}"
                                         CommandParameter="{Binding}" />
                                 </Grid.GestureRecognizers>
                                 <Label Text="{Binding}"
