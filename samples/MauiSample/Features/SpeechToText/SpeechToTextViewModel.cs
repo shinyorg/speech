@@ -42,6 +42,33 @@ public partial class SpeechToTextViewModel : ObservableObject
     public string SilenceTimeoutText => $"Silence Timeout: {SilenceTimeoutSeconds:0}s";
 
     [ObservableProperty]
+    bool echoCancellation;
+
+    [ObservableProperty]
+    bool noiseSuppression;
+
+    [ObservableProperty]
+    bool automaticGainControl;
+
+    // Cloud providers capture through IAudioSource and honour these effects; native
+    // on-device recognizers manage their own mic and ignore AudioProcessing. Returns
+    // null when nothing is enabled so raw audio is captured.
+    SpeechRecognitionOptions BuildOptions() => new()
+    {
+        Culture = SelectedLocale,
+        SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
+        PreferOnDevice = PreferOnDevice,
+        AudioProcessing = (EchoCancellation || NoiseSuppression || AutomaticGainControl)
+            ? new AudioProcessingOptions
+            {
+                EchoCancellation = EchoCancellation,
+                NoiseSuppression = NoiseSuppression,
+                AutomaticGainControl = AutomaticGainControl
+            }
+            : null
+    };
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ContinuousButtonColor))]
     [NotifyPropertyChangedFor(nameof(UntilSilenceButtonColor))]
     [NotifyPropertyChangedFor(nameof(WakeWordButtonColor))]
@@ -170,12 +197,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     {
         StatusText = "Listening (continuous)...";
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = SelectedLocale,
-            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
-            PreferOnDevice = PreferOnDevice
-        };
+        var options = BuildOptions();
 
         var accumulated = "";
         var tcs = new TaskCompletionSource();
@@ -239,12 +261,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     {
         StatusText = "Listening (until silence)...";
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = SelectedLocale,
-            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
-            PreferOnDevice = PreferOnDevice
-        };
+        var options = BuildOptions();
 
         var result = await stt.ListenUntilSilence(options, ct);
 
@@ -263,12 +280,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     {
         StatusText = $"Listening for wake word: \"{WakePhrase}\"...";
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = SelectedLocale,
-            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
-            PreferOnDevice = PreferOnDevice
-        };
+        var options = BuildOptions();
 
         var result = await stt.StatementAfterKeyword(
             [WakePhrase],
@@ -295,12 +307,7 @@ public partial class SpeechToTextViewModel : ObservableObject
 
         StatusText = $"Listening for keywords: {string.Join(", ", keywords)}...";
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = SelectedLocale,
-            SilenceTimeout = TimeSpan.FromSeconds(SilenceTimeoutSeconds),
-            PreferOnDevice = PreferOnDevice
-        };
+        var options = BuildOptions();
 
         var result = await stt.WaitListenForKeywords(keywords, options: options, cancellationToken: ct);
 

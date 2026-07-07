@@ -77,6 +77,43 @@
         </div>
     }
 
+    <!-- Recognition Settings -->
+    <div class="card">
+        <div class="card-label">Recognition Settings</div>
+        <div class="field">
+            <div class="field-label">Silence Timeout: @silenceTimeoutSeconds.ToString("0")s</div>
+            <div class="slider-row">
+                <input type="range" min="1" max="10" step="1" @bind="silenceTimeoutSeconds" @bind:event="oninput" disabled="@isListening" />
+                <span class="slider-value">@silenceTimeoutSeconds.ToString("0")s</span>
+            </div>
+        </div>
+        <div class="divider"></div>
+        <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" @bind="preferOnDevice" disabled="@isListening" />
+            Prefer On-Device
+        </label>
+    </div>
+
+    <!-- Audio Processing -->
+    <div class="card">
+        <div class="card-label">Audio Processing</div>
+        <div style="color:var(--text-muted);font-size:12px;margin-bottom:10px">
+            Best-effort mic voice-processing applied by cloud providers. Native on-device recognizers ignore these.
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <input type="checkbox" @bind="echoCancellation" disabled="@isListening" />
+            Echo Cancellation
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <input type="checkbox" @bind="noiseSuppression" disabled="@isListening" />
+            Noise Suppression
+        </label>
+        <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" @bind="automaticGainControl" disabled="@isListening" />
+            Automatic Gain Control
+        </label>
+    </div>
+
     <!-- Controls -->
     <div class="btn-row" style="margin-bottom:16px">
         @if (isListening)
@@ -203,6 +240,11 @@ else
     float? sttConfidence;
     string? recognizedText;
     CancellationTokenSource? listenCts;
+    bool echoCancellation;
+    bool noiseSuppression;
+    bool automaticGainControl;
+    double silenceTimeoutSeconds = 3;
+    bool preferOnDevice;
 
     // --- TTS State ---
     bool isSpeaking;
@@ -231,6 +273,24 @@ else
     }
 
     // ==================== STT ====================
+
+    // Cloud providers capture through IAudioSource and honour these effects; native
+    // on-device recognizers manage their own mic and ignore AudioProcessing. Returns
+    // null when nothing is enabled so raw audio is captured.
+    SpeechRecognitionOptions BuildOptions() => new()
+    {
+        Culture = new CultureInfo(selectedLocale),
+        SilenceTimeout = TimeSpan.FromSeconds(silenceTimeoutSeconds),
+        PreferOnDevice = preferOnDevice,
+        AudioProcessing = (echoCancellation || noiseSuppression || automaticGainControl)
+            ? new AudioProcessingOptions
+            {
+                EchoCancellation = echoCancellation,
+                NoiseSuppression = noiseSuppression,
+                AutomaticGainControl = automaticGainControl
+            }
+            : null
+    };
 
     async Task StartListeningAsync()
     {
@@ -287,10 +347,7 @@ else
     {
         sttStatus = "Listening (continuous)...";
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = new CultureInfo(selectedLocale)
-        };
+        var options = BuildOptions();
 
         var accumulated = "";
         var tcs = new TaskCompletionSource();
@@ -347,10 +404,7 @@ else
         sttStatus = "Listening (until silence)...";
         StateHasChanged();
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = new CultureInfo(selectedLocale)
-        };
+        var options = BuildOptions();
 
         var text = await SpeechToText.ListenUntilSilence(options, ct);
 
@@ -376,10 +430,7 @@ else
         sttStatus = $"Listening for wake word: \"{wakePhrase}\"...";
         StateHasChanged();
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = new CultureInfo(selectedLocale)
-        };
+        var options = BuildOptions();
 
         var result = await SpeechToText.StatementAfterKeyword(
             [wakePhrase],
@@ -406,10 +457,7 @@ else
         sttStatus = $"Listening for keywords: {string.Join(", ", keywords)}...";
         StateHasChanged();
 
-        var options = new SpeechRecognitionOptions
-        {
-            Culture = new CultureInfo(selectedLocale)
-        };
+        var options = BuildOptions();
 
         var result = await SpeechToText.WaitListenForKeywords(keywords, options: options, cancellationToken: ct);
 

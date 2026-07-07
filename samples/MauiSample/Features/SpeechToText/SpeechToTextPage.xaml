@@ -135,6 +135,54 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Audio Processing Card -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="AUDIO PROCESSING"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+
+                    <Label Text="Best-effort mic voice-processing applied by cloud providers. Native on-device recognizers ignore these."
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Echo Cancellation"
+                               VerticalOptions="Center" />
+                        <Switch Grid.Column="1"
+                                IsToggled="{Binding EchoCancellation}"
+                                OnColor="{StaticResource Primary}" />
+                    </Grid>
+
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Noise Suppression"
+                               VerticalOptions="Center" />
+                        <Switch Grid.Column="1"
+                                IsToggled="{Binding NoiseSuppression}"
+                                OnColor="{StaticResource Primary}" />
+                    </Grid>
+
+                    <BoxView HeightRequest="1"
+                             Color="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Automatic Gain Control"
+                               VerticalOptions="Center" />
+                        <Switch Grid.Column="1"
+                                IsToggled="{Binding AutomaticGainControl}"
+                                OnColor="{StaticResource Primary}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Controls -->
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <Button Text="{Binding ListenButtonText}"
