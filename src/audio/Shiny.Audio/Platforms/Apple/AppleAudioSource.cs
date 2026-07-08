@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using AVFoundation;
+using Foundation;
 using Microsoft.Extensions.Logging;
 
 namespace Shiny.Audio;
@@ -9,6 +10,16 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
     AVAudioEngine? audioEngine;
     AVAudioConverter? converter;
     Stream? outputStream;
+
+#if !MACOS
+    // Snapshot of the shared session's profile before we switch it into the record-oriented
+    // PlayAndRecord + VoiceChat configuration, so StopCaptureAsync can restore it. Without this,
+    // the telephony VoiceChat profile lingers after recording and makes later playback quiet and
+    // earpiece-routed (AppleAudioPlayer deliberately leaves an existing PlayAndRecord session alone).
+    string? priorCategory;
+    AVAudioSessionCategoryOptions priorOptions;
+    string? priorMode;
+#endif
 
     public Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
@@ -20,6 +31,10 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         // "required condition is false: IsFormatSampleRateAndChannelCountValid(format)" because
         // the node still reports a 0 Hz / 0-channel format. Configure the session first.
         var audioSession = AVAudioSession.SharedInstance();
+        // Remember the current profile so StopCaptureAsync can put it back exactly as we found it.
+        priorCategory = audioSession.Category;
+        priorOptions = audioSession.CategoryOptions;
+        priorMode = audioSession.Mode;
         // PlayAndRecord (not Record) mirrors the known-good SpeechToText capture path: it carries an
         // output route, so the output-oriented Bluetooth/speaker options are all valid. Pairing those
         // options with the input-only Record category instead makes SetCategory fail with OSStatus -50.
@@ -144,6 +159,15 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
 
 #if !MACOS
             var session = AVAudioSession.SharedInstance();
+            // Restore the pre-capture profile before deactivating so we don't leave the shared
+            // session stuck in PlayAndRecord + VoiceChat, which attenuates and mis-routes later
+            // playback. Reactivating happens on the next PlayAsync/StartCapture.
+            if (priorCategory != null)
+            {
+                session.SetCategory(new NSString(priorCategory), priorOptions, out _);
+                if (priorMode != null)
+                    session.SetMode(new NSString(priorMode), out _);
+            }
             session.SetActive(false, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out _);
 #endif
         }
