@@ -13,6 +13,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseShiny() // required: native speech/audio permission handling routes through Shiny.Core (AndroidPlatform)
             .UseShinyControls()
             .UseShinyShell(cfg => cfg.AddGeneratedMaps())
             .ConfigureFonts(fonts =>

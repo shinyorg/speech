@@ -27,6 +27,7 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls"/>
+        <PackageReference Include="Shiny.Hosting.Maui"/>
         <PackageReference Include="Shiny.Maui.Shell"/>
         <PackageReference Include="Shiny.Maui.Controls"/>
         <PackageReference Include="Shiny.DocumentDb.Extensions.DependencyInjection"/>

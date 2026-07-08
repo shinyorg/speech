@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Shiny.Audio;
 using Shiny.Speech;
 
 namespace Shiny;
@@ -15,10 +14,7 @@ public static class SpeechServiceCollectionExtensions
 
     public static IServiceCollection AddSpeechToText(this IServiceCollection services)
     {
-#if ANDROID
-        services.TryAddSingleton<ActivityProvider>();
-        services.TryAddSingleton<ISpeechToTextService, SpeechToTextImpl>();
-#elif PLATFORM
+#if PLATFORM
         services.TryAddSingleton<ISpeechToTextService, SpeechToTextImpl>();
 #else
         if (OperatingSystem.IsBrowser())

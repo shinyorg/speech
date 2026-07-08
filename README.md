@@ -30,15 +30,27 @@ All packages share a single version, defined by `version.json` at the repo root 
 Use the built-in OS speech engines — no cloud account needed. Works on MAUI (iOS, Android, Windows) and Blazor WebAssembly (via Web Speech API).
 
 ```csharp
+builder
+    .UseMauiApp<App>()
+    .UseShiny(); // required — see note below
+
 builder.Services.AddSpeechServices();
 // Registers: ISpeechToTextService, ITextToSpeechService, IAudioSource, IAudioPlayer
 // On Browser/WASM: auto-detected via OperatingSystem.IsBrowser()
 ```
 
-> **Audio types moved to `Shiny.Audio`.** `IAudioSource`, `IAudioPlayer`, `PipeStream`, and
-> `AccessState` now live in the `Shiny.Audio` namespace (they used to be in `Shiny.Speech`). Add
-> `using Shiny.Audio;` where you consume them. `AddSpeechServices()` still wires them up; to register
-> audio on its own (without speech) call `builder.Services.AddAudioServices();`.
+> **`UseShiny()` is now required for native speech/audio.** Runtime permission handling (Android
+> `RECORD_AUDIO`) and activity tracking are delegated to [Shiny.Core](https://shinylib.net)'s
+> `AndroidPlatform` instead of a hand-rolled fragment. Add the `Shiny.Hosting.Maui` package and call
+> `.UseShiny()` on the `MauiAppBuilder` so `AndroidPlatform` is registered and receives permission
+> callbacks. This replaces the old self-contained `ActivityProvider`/`PermissionRequestFragment`.
+
+> **`AccessState` now comes from `Shiny.Core`.** It lives in the `Shiny` namespace (it previously lived
+> in `Shiny.Audio`). Because `Shiny` is a parent of `Shiny.Audio`/`Shiny.Speech`, most code needs no
+> change; add `using Shiny;` only where you reference it outside those namespaces. `IAudioSource`,
+> `IAudioPlayer`, and `PipeStream` remain in `Shiny.Audio` — add `using Shiny.Audio;` where you consume
+> them. `AddSpeechServices()` still wires everything up; to register audio on its own call
+> `builder.Services.AddAudioServices();`.
 
 ### Azure AI Speech (Cloud)
 

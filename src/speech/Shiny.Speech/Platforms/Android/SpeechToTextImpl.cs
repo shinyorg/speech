@@ -1,17 +1,15 @@
 using System.Text.RegularExpressions;
 using Android;
 using Android.Content;
-using Android.Content.PM;
 using Android.Media;
 using Android.OS;
 using Android.Speech;
 using Microsoft.Extensions.Logging;
 using Stream = Android.Media.Stream;
-using Shiny.Audio;
 
 namespace Shiny.Speech;
 
-public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechToTextImpl> logger) : ISpeechToTextService
+public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl> logger) : ISpeechToTextService
 {
     Android.Speech.SpeechRecognizer? recognizer;
     Handler? handler;
@@ -35,22 +33,12 @@ public class SpeechToTextImpl(ActivityProvider activityProvider, ILogger<SpeechT
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
 
-    public async Task<AccessState> RequestAccess()
+    public Task<AccessState> RequestAccess()
     {
         if (!IsSupported)
-            return AccessState.NotSupported;
+            return Task.FromResult(AccessState.NotSupported);
 
-        var context = Android.App.Application.Context;
-        if (context.CheckSelfPermission(Manifest.Permission.RecordAudio) == Permission.Granted)
-            return AccessState.Available;
-
-        var activity = activityProvider.Current;
-        if (activity is not AndroidX.Fragment.App.FragmentActivity fragmentActivity)
-            throw new InvalidOperationException("Current activity must be a FragmentActivity to request permissions");
-
-        var fragment = new PermissionRequestFragment();
-        var granted = await fragment.RequestAsync(fragmentActivity, Manifest.Permission.RecordAudio);
-        return granted ? AccessState.Available : AccessState.Denied;
+        return platform.RequestAccess(Manifest.Permission.RecordAudio);
     }
 
     public Task Start(SpeechRecognitionOptions? options = null)

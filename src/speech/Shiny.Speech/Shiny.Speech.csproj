@@ -23,6 +23,7 @@
     <ItemGroup>
         <Compile Remove="Platforms\**\*.cs" />
         <ProjectReference Include="..\..\audio\Shiny.Audio\Shiny.Audio.csproj" />
+        <PackageReference Include="Shiny.Core" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     </ItemGroup>
@@ -33,9 +34,6 @@
 
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
         <Compile Include="Platforms\Android\**\*.cs" />
-
-        <PackageReference Include="Xamarin.AndroidX.Core" />
-        <PackageReference Include="Xamarin.AndroidX.Fragment" />
     </ItemGroup>
 
     <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">

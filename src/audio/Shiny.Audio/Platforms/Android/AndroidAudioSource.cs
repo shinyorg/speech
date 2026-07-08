@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Shiny.Audio;
 
-public class AndroidAudioSource(ActivityProvider activityProvider, ILogger<AndroidAudioSource> logger) : IAudioSource
+public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSource> logger) : IAudioSource
 {
     AudioRecord? audioRecord;
     CancellationTokenSource? recordingCts;
@@ -15,20 +15,8 @@ public class AndroidAudioSource(ActivityProvider activityProvider, ILogger<Andro
     NoiseSuppressor? noiseSuppressor;
     AutomaticGainControl? gainControl;
 
-    public async Task<AccessState> RequestAccess()
-    {
-        var context = Android.App.Application.Context;
-        if (context.CheckSelfPermission(Manifest.Permission.RecordAudio) == Permission.Granted)
-            return AccessState.Available;
-
-        var activity = activityProvider.Current;
-        if (activity is not AndroidX.Fragment.App.FragmentActivity fragmentActivity)
-            throw new InvalidOperationException("Current activity must be a FragmentActivity to request permissions");
-
-        var fragment = new PermissionRequestFragment();
-        var granted = await fragment.RequestAsync(fragmentActivity, Manifest.Permission.RecordAudio);
-        return granted ? AccessState.Available : AccessState.Denied;
-    }
+    public Task<AccessState> RequestAccess()
+        => platform.RequestAccess(Manifest.Permission.RecordAudio);
 
     public Task<System.IO.Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
