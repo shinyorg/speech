@@ -67,10 +67,15 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
 
         // No DefaultToSpeaker — it pins output to the built-in speaker and overrides a Bluetooth A2DP
         // route. AllowBluetoothA2DP lets output go to a Bluetooth *speaker* while the phone mic captures.
+        // DuckOthers keeps other audio (music) playing at a reduced volume under the live mic.
+        var categoryOptions = AVAudioSessionCategoryOptions.AllowBluetooth
+            | AVAudioSessionCategoryOptions.AllowBluetoothA2DP;
+        if (options.DuckOtherAudio)
+            categoryOptions |= AVAudioSessionCategoryOptions.DuckOthers;
+
         session.SetCategory(
             AVAudioSessionCategory.PlayAndRecord,
-            AVAudioSessionCategoryOptions.AllowBluetooth
-                | AVAudioSessionCategoryOptions.AllowBluetoothA2DP,
+            categoryOptions,
             // NOTE: no AllowAirPlay — iOS won't carry a PlayAndRecord (live-mic) session over AirPlay.
             out var catErr);
         if (catErr != null)

@@ -52,6 +52,14 @@ public record AudioMonitorOptions
     /// <summary>Initial output gain, 0.0 – 1.0. Default 1.0.</summary>
     public double Gain { get; init; } = 1.0;
 
+    /// <summary>
+    /// Duck other audio (e.g. music playing from this or another app) while monitoring, instead of
+    /// interrupting it — the "talk over the music" broadcast behavior. Other audio keeps playing at a
+    /// reduced volume and is restored when monitoring stops. iOS adds <c>DuckOthers</c> to the session;
+    /// Android takes transient <c>MayDuck</c> audio focus.
+    /// </summary>
+    public bool DuckOtherAudio { get; init; }
+
     /// <summary>Preferred capture device. Null = OS default.</summary>
     public AudioDevice? InputDevice { get; init; }
 

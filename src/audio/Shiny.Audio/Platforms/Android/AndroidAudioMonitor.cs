@@ -17,6 +17,8 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
     AcousticEchoCanceler? echoCanceler;
     NoiseSuppressor? noiseSuppressor;
     AutomaticGainControl? gainControl;
+    AudioManager? audioManager;
+    AudioFocusRequestClass? focusRequest;
     double gain = 1.0;
 
     public bool IsMonitoring { get; private set; }
@@ -46,6 +48,9 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
 
         if (Android.App.Application.Context.CheckSelfPermission(Manifest.Permission.RecordAudio) != Permission.Granted)
             throw new InvalidOperationException("RECORD_AUDIO permission has not been granted. Call RequestAccess() first.");
+
+        if (options.DuckOtherAudio)
+            RequestDuckFocus();
 
         const ChannelIn inConfig = ChannelIn.Mono;
         const ChannelOut outConfig = ChannelOut.Mono;
@@ -160,9 +165,45 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
             track = null;
         }
 
+        AbandonDuckFocus();   // restore other audio (music) to full volume
+
         IsMonitoring = false;
         logger.LogDebug("Android audio monitor stopped");
         return Task.CompletedTask;
+    }
+
+    // Take transient "may duck" focus so other audio (e.g. music) plays at a reduced volume under
+    // the live mic instead of being interrupted; abandoned on Stop to restore it.
+    void RequestDuckFocus()
+    {
+        audioManager ??= (AudioManager?)Android.App.Application.Context.GetSystemService(Context.AudioService);
+        if (audioManager == null)
+            return;
+
+        var attrs = new AudioAttributes.Builder()!
+            .SetUsage(AudioUsageKind.Media)!
+            .SetContentType(AudioContentType.Speech)!
+            .Build()!;
+
+        focusRequest = new AudioFocusRequestClass.Builder(AudioFocus.GainTransientMayDuck)!
+            .SetAudioAttributes(attrs)!
+            .SetOnAudioFocusChangeListener(new NoopFocusListener())!
+            .Build();
+
+        audioManager.RequestAudioFocus(focusRequest!);
+    }
+
+    void AbandonDuckFocus()
+    {
+        if (audioManager != null && focusRequest != null)
+            audioManager.AbandonAudioFocusRequest(focusRequest);
+        focusRequest?.Dispose();
+        focusRequest = null;
+    }
+
+    sealed class NoopFocusListener : Java.Lang.Object, AudioManager.IOnAudioFocusChangeListener
+    {
+        public void OnAudioFocusChange(AudioFocus focusChange) { }
     }
 
     public async ValueTask DisposeAsync()
