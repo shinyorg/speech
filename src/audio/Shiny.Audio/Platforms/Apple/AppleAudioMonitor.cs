@@ -57,6 +57,8 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
         gain = Math.Clamp(options.Gain, 0, 1);
         engine = new AVAudioEngine();
 
+        var wantsProcessing = options.Processing?.AnyEnabled == true;
+
 #if !MACOS
         var session = AVAudioSession.SharedInstance();
         priorCategory = session.Category;
@@ -78,7 +80,6 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
         // low-quality HFP profile — which an A2DP-only speaker can't provide, so audio falls back to the
         // phone. Use it only when the caller asked for processing; otherwise Default mode, which lets
         // output route to a Bluetooth A2DP speaker.
-        var wantsProcessing = options.Processing?.AnyEnabled == true;
         var mode = wantsProcessing ? AVAudioSessionMode.VoiceChat : AVAudioSessionMode.Default;
         session.SetMode(mode.GetConstant()!, out _);
 
