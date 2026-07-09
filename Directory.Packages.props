@@ -24,7 +24,7 @@
     <ItemGroup>
         <PackageVersion Include="Shiny.Hosting.Maui" Version="5.2.3"/>
         <PackageVersion Include="Shiny.Maui.Shell" Version="6.3.2"/>
-        <PackageVersion Include="Shiny.Maui.Controls" Version="1.0.1-beta-0142"/>
+        <PackageVersion Include="Shiny.Maui.Controls" Version="1.0.1-beta-0144"/>
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
         <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.9"/>
         <PackageVersion Include="Imposter" Version="0.1.9"/>

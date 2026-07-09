@@ -10,9 +10,18 @@ public static class AudioServiceCollectionExtensions
     /// Registers the platform audio capture (<see cref="IAudioSource"/>) and playback
     /// (<see cref="IAudioPlayer"/>) services.
     /// </summary>
-    public static IServiceCollection AddAudioServices(this IServiceCollection services) => services
-        .AddAudioSource()
-        .AddAudioPlayer();
+    public static IServiceCollection AddAudioServices(this IServiceCollection services)
+    {
+        services
+            .AddAudioSource()
+            .AddAudioPlayer()
+            .AddAudioMonitor()
+            .AddAudioDevices();
+
+        // One-stop discovery facade over the focused services above (which remain injectable directly).
+        services.TryAddSingleton<IAudio, AudioFacade>();
+        return services;
+    }
 
     public static IServiceCollection AddAudioSource(this IServiceCollection services)
     {
@@ -40,6 +49,34 @@ public static class AudioServiceCollectionExtensions
 #else
         if (OperatingSystem.IsBrowser())
             services.TryAddSingleton<IAudioPlayer, BrowserAudioPlayer>();
+#endif
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the live microphone monitor (<see cref="IAudioMonitor"/>) — mic-to-output
+    /// passthrough. Only implemented on iOS/Mac Catalyst and Android.
+    /// </summary>
+    public static IServiceCollection AddAudioMonitor(this IServiceCollection services)
+    {
+#if APPLE
+        services.TryAddSingleton<IAudioMonitor, AppleAudioMonitor>();
+#elif ANDROID
+        services.TryAddSingleton<IAudioMonitor, AndroidAudioMonitor>();
+#endif
+        return services;
+    }
+
+    /// <summary>
+    /// Registers audio input/output route enumeration (<see cref="IAudioDevices"/>). Only
+    /// implemented on iOS/Mac Catalyst and Android.
+    /// </summary>
+    public static IServiceCollection AddAudioDevices(this IServiceCollection services)
+    {
+#if APPLE
+        services.TryAddSingleton<IAudioDevices, AppleAudioDevices>();
+#elif ANDROID
+        services.TryAddSingleton<IAudioDevices, AndroidAudioDevices>();
 #endif
         return services;
     }

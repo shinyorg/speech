@@ -4,6 +4,7 @@
                   xmlns:shiny="clr-namespace:Shiny;assembly=Shiny.Maui.Shell"
                   xmlns:stt="clr-namespace:MauiSample.Features.SpeechToText"
                   xmlns:tts="clr-namespace:MauiSample.Features.TextToSpeech"
+                  xmlns:mic="clr-namespace:MauiSample.Features.Microphone"
                   xmlns:aura="clr-namespace:MauiSample.Features.Aura"
                   xmlns:chat="clr-namespace:MauiSample.Features.Chat"
                   xmlns:settings="clr-namespace:MauiSample.Features.Settings"
@@ -17,6 +18,9 @@
         <ShellContent Title="Text to Speech"
                       Icon="speaker.png"
                       ContentTemplate="{DataTemplate tts:TextToSpeechPage}" />
+        <ShellContent Title="Microphone"
+                      Icon="mic.png"
+                      ContentTemplate="{DataTemplate mic:MicrophonePage}" />
         <ShellContent Title="Aura"
                       ContentTemplate="{DataTemplate aura:AuraPage}"
                       Route="aura">

@@ -34,6 +34,11 @@ public static class MauiProgram
 
         // Register native platform speech services
         builder.Services.AddSpeechServices();
+
+        // Audio capture/playback + the live mic monitor (IAudioMonitor) and route enumeration
+        // (IAudioDevices) used by the Microphone sample. TryAdd-based, so it's safe alongside
+        // AddSpeechServices (which already registers the source/player).
+        builder.Services.AddAudioServices();
         
         // To use a 3rd-party cloud provider instead of native speech, uncomment one of these.
         // Once active, the Settings page shows an editable "API Credentials" section (the config

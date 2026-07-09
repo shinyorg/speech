@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:MauiSample.Features.Microphone"
+             x:Class="MauiSample.Features.Microphone.MicrophonePage"
+             x:DataType="local:MicrophoneViewModel"
+             Title="Microphone">
+    <ScrollView Padding="20">
+        <VerticalStackLayout Spacing="16">
+
+            <!-- Live monitor -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="LIVE MONITOR"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Label Text="{Binding StatusText}"
+                           FontSize="14"
+                           TextColor="{StaticResource Primary}" />
+
+                    <Label Text="Input level"
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+                    <ProgressBar Progress="{Binding Level}"
+                                 ProgressColor="{StaticResource Primary}" />
+
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Label Text="Gain" VerticalOptions="Center" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Gain}" />
+                    </Grid>
+
+                    <Button Text="{Binding MonitorButtonText}"
+                            Command="{Binding ToggleMonitorCommand}"
+                            CornerRadius="12"
+                            FontSize="16"
+                            HeightRequest="54" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Current routes (display only) -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+                    <Label Grid.ColumnSpan="2"
+                           Text="AUDIO ROUTES"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+
+                    <Label Grid.Row="1" Grid.Column="0" Text="🎙 Input" VerticalOptions="Center" TextColor="{StaticResource Gray400}" />
+                    <Label Grid.Row="1" Grid.Column="1" Text="{Binding CurrentInputText}" FontFamily="OpenSansSemibold" />
+
+                    <Label Grid.Row="2" Grid.Column="0" Text="🔊 Output" VerticalOptions="Center" TextColor="{StaticResource Gray400}" />
+                    <Label Grid.Row="2" Grid.Column="1" Text="{Binding CurrentOutputText}" FontFamily="OpenSansSemibold" />
+                </Grid>
+            </Border>
+
+            <!-- Voice processing -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="VOICE PROCESSING"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Label Text="Echo cancellation fights feedback, but on iOS it forces Bluetooth to the low-quality call profile — a Bluetooth speaker then drops back to the phone. Leave off to route to a Bluetooth speaker; turn on when using the phone speaker up close. Applies on next Start."
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Echo Cancellation" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding EchoCancellation}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Noise Suppression" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding NoiseSuppression}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Automatic Gain Control" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding AutomaticGainControl}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Record & Play -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="RECORD &amp; PLAY"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Label Text="{Binding RecordStatus}"
+                           FontSize="12"
+                           TextColor="{StaticResource Gray400}" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0"
+                                Text="{Binding RecordButtonText}"
+                                Command="{Binding ToggleRecordCommand}"
+                                CornerRadius="12"
+                                FontSize="16"
+                                HeightRequest="50" />
+                        <Button Grid.Column="1"
+                                Text="▶  Play"
+                                Command="{Binding PlayCommand}"
+                                IsEnabled="{Binding CanPlay}"
+                                CornerRadius="12"
+                                FontSize="16"
+                                HeightRequest="50" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -59,13 +59,15 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         // If something else (e.g. an active STT session) has already configured PlayAndRecord,
         // leave it alone. Switching to Playback-only would suspend the microphone and break any
         // concurrent recognition. Always reactivate the session in case it was deactivated.
-        // Preserve the current category options (OR in DefaultToSpeaker) rather than replacing them,
-        // so we don't tear down another component's ducking (e.g. Shiny.Music's Duck() sets
-        // Playback + DuckOthers and expects this playback to be heard over the ducked music).
+        // Preserve the current category options so we don't tear down another component's ducking
+        // (e.g. Shiny.Music's Duck() sets Playback + DuckOthers and expects this playback to be heard
+        // over the ducked music). We do NOT force DefaultToSpeaker: it's a no-op for plain Playback
+        // (which already defaults to the main speaker) and pins output local, preventing playback from
+        // following the system output route to headphones / Bluetooth / AirPlay (HomePod).
         var session = AVAudioSession.SharedInstance();
         var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
         if (session.Category != playAndRecord)
-            session.SetCategory(AVAudioSessionCategory.Playback, session.CategoryOptions | AVAudioSessionCategoryOptions.DefaultToSpeaker, out _);
+            session.SetCategory(AVAudioSessionCategory.Playback, session.CategoryOptions, out _);
         session.SetActive(true, out _);
 #endif
 

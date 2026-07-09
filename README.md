@@ -3,7 +3,7 @@
 This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
-- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering. Usable on its own; also the audio backbone for Shiny.Speech.
+- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering, plus a live mic-to-output **monitor** (`IAudioMonitor`) and audio **route enumeration/selection** (`IAudioDevices`), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
@@ -12,7 +12,7 @@ All packages share a single version, defined by `version.json` at the repo root 
 
 | Package | Description | Targets |
 |---------|-------------|---------|
-| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech** | Core STT/TTS interfaces + native platform implementations (references Shiny.Audio for capture/playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
@@ -49,7 +49,8 @@ builder.Services.AddSpeechServices();
 > in `Shiny.Audio`). Because `Shiny` is a parent of `Shiny.Audio`/`Shiny.Speech`, most code needs no
 > change; add `using Shiny;` only where you reference it outside those namespaces. `IAudioSource`,
 > `IAudioPlayer`, and `PipeStream` remain in `Shiny.Audio` — add `using Shiny.Audio;` where you consume
-> them. `AddSpeechServices()` still wires everything up; to register audio on its own call
+> them. `AddSpeechServices()` still wires up capture + playback; to register audio on its own — including
+> the live monitor (`IAudioMonitor`), route enumeration (`IAudioDevices`), and the `IAudio` facade — call
 > `builder.Services.AddAudioServices();`.
 
 ### Azure AI Speech (Cloud)
@@ -161,6 +162,50 @@ if (tts.IsPlayerAnalysisSupported)
 | `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ |
 
 On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` + `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and kept warm across utterances — only the first utterance pays ~50–150 ms additional startup.
+
+### Microphone Monitor & Routes (`IAudio`)
+
+Inject the single `IAudio` facade to reach the whole audio surface — `Player`, `Source`, `Monitor`,
+`Devices` — or keep injecting the focused interfaces directly. `IAudioMonitor` routes the mic straight
+to the current output in near-real-time (a PA / "talk over a Bluetooth speaker"); `IAudioDevices`
+reports which routes are active.
+
+```csharp
+using Shiny.Audio;
+using Shiny; // AccessState
+
+public class PaController(IAudio audio)
+{
+    public async Task Start()
+    {
+        if (await audio.Monitor.RequestAccess() != AccessState.Available)
+            return;
+
+        audio.Monitor.InputLevelChanged += (_, level) => { /* drive a VU bar */ };
+
+        // No Processing → routes to a Bluetooth A2DP speaker (phone mic + BT output).
+        await audio.Monitor.Start(new AudioMonitorOptions { Gain = 1.0 });
+    }
+
+    // Display where audio is flowing (e.g. "JBL Flip · BluetoothA2dp").
+    public string Output => $"{audio.Devices.CurrentOutput?.Name} · {audio.Devices.CurrentOutput?.Type}";
+
+    public Task Stop() => audio.Monitor.Stop();
+}
+```
+
+`IAudioMonitor` and `IAudioDevices` are implemented on **iOS/Mac Catalyst and Android**; the facade
+throws `PlatformNotSupportedException` if you touch them elsewhere.
+
+- **Bluetooth speaker vs. echo cancellation (iOS):** enabling `AudioProcessingOptions` forces Bluetooth
+  onto the low-quality HFP call profile, so a Bluetooth *speaker* (A2DP) drops back to the phone. Leave
+  processing **off** to reach a BT speaker; turn it on only for phone-speaker output where feedback is a
+  problem. **AirPlay/HomePod is not supported for a live mic** — use Bluetooth for a wireless PA.
+- **Device selection is Android-first:** Android enumerates/selects both input and output; iOS can
+  select the input but treats **output as observe-only** (AirPlay/Bluetooth output routing is owned by
+  the system picker). Use `CurrentInput`/`CurrentOutput` as a **display** property everywhere.
+
+See the **Microphone** tab in the MAUI sample for a full page.
 
 ### Speech-to-Text
 
