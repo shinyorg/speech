@@ -31,6 +31,7 @@ public class CloudTextToSpeech : ITextToSpeechService
     public bool IsSupported => true;
     public bool IsSpeaking => audioPlayer.IsPlaying;
     public bool IsPlayerAnalysisSupported => audioPlayer.IsPlayerAnalysisSupported;
+    public bool CanSynthesizeToStream => true;
     public event EventHandler<double>? AudioLevelChanged;
 
     void OnPlayerAudioLevelChanged(object? sender, double level)
@@ -50,6 +51,12 @@ public class CloudTextToSpeech : ITextToSpeechService
         await audioPlayer.PlayAsync(audioStream, cancellationToken);
 
         logger.LogDebug("Cloud text-to-speech completed");
+    }
+
+    public Task<Stream> SynthesizeToStreamAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        logger.LogDebug("Synthesizing speech to stream via cloud provider");
+        return provider.SynthesizeAsync(text, options, cancellationToken);
     }
 
     public Task StopAsync() => audioPlayer.StopAsync();

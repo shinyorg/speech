@@ -14,9 +14,13 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
     public bool IsSupported => true;
     public bool IsSpeaking => mediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
     public bool IsPlayerAnalysisSupported => false;
+    public bool CanSynthesizeToStream => false;
 #pragma warning disable CS0067
     public event EventHandler<double>? AudioLevelChanged;
 #pragma warning restore CS0067
+
+    public Task<Stream> SynthesizeToStreamAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("On-device text-to-speech cannot synthesize to a stream; register a cloud provider (Typecast/Azure/ElevenLabs/OpenAI).");
 
     public Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {

@@ -14,9 +14,13 @@ public partial class BrowserTextToSpeechService(ILogger<BrowserTextToSpeechServi
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsSynthesisSupported();
     public bool IsSpeaking => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsSpeaking();
     public bool IsPlayerAnalysisSupported => false;
+    public bool CanSynthesizeToStream => false;
 #pragma warning disable CS0067
     public event EventHandler<double>? AudioLevelChanged;
 #pragma warning restore CS0067
+
+    public Task<Stream> SynthesizeToStreamAsync(string text, TextToSpeechOptions? options = null, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("Browser text-to-speech cannot synthesize to a stream; register a cloud provider (Azure/ElevenLabs/OpenAI).");
 
     public async Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {
