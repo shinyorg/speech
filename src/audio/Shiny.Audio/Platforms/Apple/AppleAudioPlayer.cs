@@ -15,6 +15,90 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
     public bool IsPlayerAnalysisSupported => true;
     public event EventHandler<double>? AudioLevelChanged;
 
+#if MACOS
+    // macOS: CoreAudio HAL — reading AND setting the system output volume are supported.
+    MacSystemVolume? macVolume;
+    MacSystemVolume MacVolume => this.macVolume ??= CreateMacVolume();
+
+    MacSystemVolume CreateMacVolume()
+    {
+        var mv = new MacSystemVolume();
+        mv.Changed += v => this.volumeChanged?.Invoke(this, v);
+        return mv;
+    }
+
+    public bool IsVolumeControlSupported => this.MacVolume.CanSet;
+    public float Volume
+    {
+        get => this.MacVolume.Get();
+        set => this.MacVolume.Set(value);   // the CoreAudio listener raises VolumeChanged
+    }
+
+    event EventHandler<float>? volumeChanged;
+    public event EventHandler<float>? VolumeChanged
+    {
+        add
+        {
+            this.volumeChanged += value;
+            _ = this.MacVolume;   // ensure the CoreAudio listener is registered
+        }
+        remove => this.volumeChanged -= value;
+    }
+#else
+    // iOS / Mac Catalyst: AVAudioSession.OutputVolume is read-only. There is no supported API to set the
+    // system volume (MPMusicPlayerController.Volume was deprecated in iOS 7 and is a no-op), so reading and
+    // KVO observation work, but the setter throws.
+    IDisposable? volumeObserver;
+
+    public bool IsVolumeControlSupported => false;
+    public float Volume
+    {
+        get
+        {
+            EnsureSessionActive();
+            return AVAudioSession.SharedInstance().OutputVolume;
+        }
+        set => throw new NotSupportedException(
+            "Setting the system volume is not supported on iOS / Mac Catalyst. Check IAudioPlayer.IsVolumeControlSupported before setting, and let the user adjust volume with the hardware buttons or an MPVolumeView.");
+    }
+
+    event EventHandler<float>? volumeChanged;
+    public event EventHandler<float>? VolumeChanged
+    {
+        add
+        {
+            this.volumeChanged += value;
+            this.EnsureVolumeObserver();
+        }
+        remove => this.volumeChanged -= value;
+    }
+
+    // KVO on AVAudioSession.outputVolume — fires for hardware buttons and Control Center. OutputVolume only
+    // reflects reality while the session is active, so make sure it is. Registered lazily and disposed in
+    // StopObserving/DisposeAsync.
+    void EnsureVolumeObserver()
+    {
+        if (this.volumeObserver != null)
+            return;
+
+        EnsureSessionActive();
+        var session = AVAudioSession.SharedInstance();
+        this.volumeObserver = session.AddObserver("outputVolume", NSKeyValueObservingOptions.New, change =>
+        {
+            var volume = (change.NewValue as NSNumber)?.FloatValue ?? session.OutputVolume;
+            this.volumeChanged?.Invoke(this, volume);
+        });
+    }
+
+    static void EnsureSessionActive()
+    {
+        // Activate without disturbing whatever category is set (mix with others so we never grab audio focus
+        // just to read a volume). Cheap and idempotent.
+        var session = AVAudioSession.SharedInstance();
+        session.SetActive(true, out _);
+    }
+#endif
+
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
         using var ms = new MemoryStream();
@@ -170,6 +254,14 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
             p.Stop();
             p.Dispose();
         }
+
+#if MACOS
+        this.macVolume?.Dispose();
+        this.macVolume = null;
+#else
+        this.volumeObserver?.Dispose();   // removes the KVO registration
+        this.volumeObserver = null;
+#endif
         return ValueTask.CompletedTask;
     }
 }

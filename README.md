@@ -163,6 +163,43 @@ if (tts.IsPlayerAnalysisSupported)
 
 On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` + `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and kept warm across utterances — only the first utterance pays ~50–150 ms additional startup.
 
+### Volume
+
+`IAudioPlayer` exposes `Volume` (the device media volume, normalized `0.0`–`1.0`), a
+`VolumeChanged` event, and `IsVolumeControlSupported`. **Reading works on every platform; setting is
+platform-limited** — always guard a set with `IsVolumeControlSupported`.
+
+```csharp
+// Read anywhere
+var level = player.Volume;
+
+// Set only where supported (throws NotSupportedException on iOS / Mac Catalyst)
+if (player.IsVolumeControlSupported)
+    player.Volume = 0.5f;
+
+// Observe changes: hardware buttons, the OS volume UI, or a successful set
+player.VolumeChanged += (_, v) =>
+    MainThread.BeginInvokeOnMainThread(() => MyVolumeSlider.Value = v);
+```
+
+| Platform | Read | Set | `VolumeChanged` source | Backing API |
+|---|---|---|---|---|
+| Android | ✅ | ✅ | System settings observer | `AudioManager` `STREAM_MUSIC` |
+| Windows | ✅ | ✅ | Endpoint volume callback | WASAPI `IAudioEndpointVolume` (default render endpoint) |
+| macOS | ✅ | ✅ * | CoreAudio property listener | HAL virtual main volume of the default output device |
+| iOS / Mac Catalyst | ✅ | ❌ | KVO on `outputVolume` | `AVAudioSession.OutputVolume` (read-only) |
+| Browser (WASM) | ✅ | ✅ | Echoed on set | `HTMLAudioElement.volume` (app-local, **not** the OS volume) |
+
+\* macOS is settable when the current default output device exposes a settable virtual main volume
+(most built-in / USB devices do; some HDMI / aggregate devices don't) — this is reflected by
+`IsVolumeControlSupported`.
+
+On device platforms `Volume` is the **system media volume** the hardware buttons control, independent
+of any per-request TTS volume. On iOS / Mac Catalyst there is no supported OS API to change the system
+volume, so the setter throws — let the user adjust it via the hardware buttons or an `MPVolumeView`.
+Browsers sandbox the OS volume, so there `Volume` is the app's own media-element volume (settable, and
+it persists across plays).
+
 ### Microphone Monitor & Routes (`IAudio`)
 
 Inject the single `IAudio` facade to reach the whole audio surface — `Player`, `Source`, `Monitor`,

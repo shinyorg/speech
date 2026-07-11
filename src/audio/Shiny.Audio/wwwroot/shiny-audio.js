@@ -7,6 +7,7 @@
 //   - Shiny.Speech → BrowserSpeechToTextService / BrowserTextToSpeechService (Web Speech API)
 let recognition = null;
 let audioElement = null;
+let audioVolume = 1.0; // app media-element volume (0.0–1.0), persisted across plays
 let recognitionStopped = false;
 let micAudioContext = null;
 let micStream = null;
@@ -312,6 +313,7 @@ export const shinySpeech = {
             audioElement = null;
         }
         audioElement = new Audio(dataUrl);
+        audioElement.volume = audioVolume; // carry the persisted volume onto the new element
         audioElement.play();
     },
 
@@ -321,5 +323,20 @@ export const shinySpeech = {
             audioElement.currentTime = 0;
             audioElement = null;
         }
+    },
+
+    // --- Volume ---
+    // Browsers do not expose the OS volume, so this is the app's own media-element volume.
+    getVolume() {
+        return audioElement ? audioElement.volume : audioVolume;
+    },
+
+    setVolume(volume) {
+        audioVolume = Math.min(1, Math.max(0, volume));
+        if (audioElement) audioElement.volume = audioVolume;
+        // Echo back to .NET so VolumeChanged fires on a successful set (parity with the native platforms).
+        getExports("Shiny.Audio").then(exports => {
+            exports.Shiny.Audio.BrowserAudioPlayer.OnVolumeChanged(audioVolume);
+        });
     }
 };

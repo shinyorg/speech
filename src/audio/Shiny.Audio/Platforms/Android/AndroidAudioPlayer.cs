@@ -1,7 +1,10 @@
+using Android.Content;
 using Android.Media;
 using Android.Media.Audiofx;
+using Android.Provider;
 using Microsoft.Extensions.Logging;
 using Stream = System.IO.Stream;
+using AudioStream = Android.Media.Stream;
 
 namespace Shiny.Audio;
 
@@ -11,9 +14,72 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
     Visualizer? visualizer;
     TaskCompletionSource? playbackTcs;
 
+    AudioManager? audioManager;
+    VolumeObserver? volumeObserver;
+    int lastVolumeStep = -1;
+
     public bool IsPlaying => mediaPlayer?.IsPlaying ?? false;
     public bool IsPlayerAnalysisSupported => true;
     public event EventHandler<double>? AudioLevelChanged;
+
+    AudioManager AudioManager => this.audioManager ??=
+        (AudioManager)Android.App.Application.Context.GetSystemService(Context.AudioService)!;
+
+    // Volume maps to the device-wide STREAM_MUSIC level (the one the hardware buttons move) — NOT any
+    // per-utterance TTS volume. Reading and setting are both supported on Android.
+    public bool IsVolumeControlSupported => true;
+
+    public float Volume
+    {
+        get
+        {
+            var max = this.AudioManager.GetStreamMaxVolume(AudioStream.Music);
+            return max <= 0 ? 0f : this.AudioManager.GetStreamVolume(AudioStream.Music) / (float)max;
+        }
+        set
+        {
+            var max = this.AudioManager.GetStreamMaxVolume(AudioStream.Music);
+            var step = (int)Math.Round(Math.Clamp(value, 0f, 1f) * max);
+            // Flags 0 = change silently, without popping the system volume UI. This triggers the content
+            // observer, which raises VolumeChanged.
+            this.AudioManager.SetStreamVolume(AudioStream.Music, step, (VolumeNotificationFlags)0);
+        }
+    }
+
+    event EventHandler<float>? volumeChanged;
+    public event EventHandler<float>? VolumeChanged
+    {
+        add
+        {
+            this.volumeChanged += value;
+            this.EnsureVolumeObserver();
+        }
+        remove => this.volumeChanged -= value;
+    }
+
+    // Android has no KVO; watch the system settings URI and filter to actual STREAM_MUSIC changes.
+    // Registered lazily on first subscription and torn down in DisposeAsync.
+    void EnsureVolumeObserver()
+    {
+        if (this.volumeObserver != null)
+            return;
+
+        this.lastVolumeStep = this.AudioManager.GetStreamVolume(AudioStream.Music);
+        this.volumeObserver = new VolumeObserver(this.OnSystemVolumeChanged);
+        Android.App.Application.Context.ContentResolver!.RegisterContentObserver(
+            Settings.System.ContentUri!, true, this.volumeObserver);
+    }
+
+    void OnSystemVolumeChanged()
+    {
+        var step = this.AudioManager.GetStreamVolume(AudioStream.Music);
+        if (step == this.lastVolumeStep)
+            return;   // the observer fires for any system setting; ignore non-music-volume changes
+
+        this.lastVolumeStep = step;
+        var max = this.AudioManager.GetStreamMaxVolume(AudioStream.Music);
+        this.volumeChanged?.Invoke(this, max <= 0 ? 0f : step / (float)max);
+    }
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
@@ -213,7 +279,22 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         mediaPlayer?.Release();
         mediaPlayer?.Dispose();
         mediaPlayer = null;
+
+        if (this.volumeObserver != null)
+        {
+            Android.App.Application.Context.ContentResolver!.UnregisterContentObserver(this.volumeObserver);
+            this.volumeObserver.Dispose();
+            this.volumeObserver = null;
+        }
         return ValueTask.CompletedTask;
+    }
+
+    // Fires OnChange on the main looper whenever a system setting changes; OnSystemVolumeChanged filters to
+    // actual STREAM_MUSIC volume changes.
+    sealed class VolumeObserver(Action onChanged)
+        : Android.Database.ContentObserver(new Android.OS.Handler(Android.OS.Looper.MainLooper!))
+    {
+        public override void OnChange(bool selfChange) => onChanged();
     }
 
     sealed class WaveformListener(Action<double> onLevel) : Java.Lang.Object, Visualizer.IOnDataCaptureListener

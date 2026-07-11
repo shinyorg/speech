@@ -10,11 +10,42 @@ public class WindowsAudioPlayer(ILogger<WindowsAudioPlayer> logger) : IAudioPlay
     MediaPlayer? mediaPlayer;
     TaskCompletionSource? playbackTcs;
 
+    WindowsSystemVolume? systemVolume;
+
     public bool IsPlaying => mediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
     public bool IsPlayerAnalysisSupported => false;
 #pragma warning disable CS0067
     public event EventHandler<double>? AudioLevelChanged;
 #pragma warning restore CS0067
+
+    // System (default render endpoint) volume via WASAPI IAudioEndpointVolume — settable, with change
+    // notifications. Created lazily so apps that never touch volume pay nothing.
+    WindowsSystemVolume SystemVolume => this.systemVolume ??= CreateSystemVolume();
+
+    WindowsSystemVolume CreateSystemVolume()
+    {
+        var sv = new WindowsSystemVolume();
+        sv.Changed += v => this.volumeChanged?.Invoke(this, v);
+        return sv;
+    }
+
+    public bool IsVolumeControlSupported => this.SystemVolume.CanSet;
+    public float Volume
+    {
+        get => this.SystemVolume.Get();
+        set => this.SystemVolume.Set(value);   // the endpoint callback raises VolumeChanged
+    }
+
+    event EventHandler<float>? volumeChanged;
+    public event EventHandler<float>? VolumeChanged
+    {
+        add
+        {
+            this.volumeChanged += value;
+            _ = this.SystemVolume;   // ensure the endpoint callback is registered
+        }
+        remove => this.volumeChanged -= value;
+    }
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
@@ -82,6 +113,8 @@ public class WindowsAudioPlayer(ILogger<WindowsAudioPlayer> logger) : IAudioPlay
     {
         mediaPlayer?.Dispose();
         mediaPlayer = null;
+        this.systemVolume?.Dispose();
+        this.systemVolume = null;
         return ValueTask.CompletedTask;
     }
 }

@@ -5,15 +5,41 @@ using System.Runtime.InteropServices.JavaScript;
 namespace Shiny.Audio;
 
 [SupportedOSPlatform("browser")]
-public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IAudioPlayer
+public partial class BrowserAudioPlayer : IAudioPlayer
 {
+    // Singleton bridge for the static [JSExport] volume-change callback (mirrors BrowserAudioSource).
+    static BrowserAudioPlayer? current;
+
+    readonly ILogger<BrowserAudioPlayer> logger;
     TaskCompletionSource? playTcs;
+
+    public BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger)
+    {
+        this.logger = logger;
+        current = this;
+    }
 
     public bool IsPlaying => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsPlaying();
     public bool IsPlayerAnalysisSupported => false;
 #pragma warning disable CS0067
     public event EventHandler<double>? AudioLevelChanged;
 #pragma warning restore CS0067
+
+    // Browsers sandbox the OS volume, so "Volume" here is the app's own media-element volume (0.0–1.0):
+    // settable and readable, and it persists across plays (applied to each new <audio> element).
+    public bool IsVolumeControlSupported => true;
+
+    public float Volume
+    {
+        get => BrowserJsModule.ImportAsync().IsCompletedSuccessfully ? GetVolume() : 1f;
+        set
+        {
+            _ = BrowserJsModule.ImportAsync();
+            SetVolume(Math.Clamp(value, 0f, 1f));   // JS echoes back via OnVolumeChanged
+        }
+    }
+
+    public event EventHandler<float>? VolumeChanged;
 
     public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
@@ -82,4 +108,14 @@ public partial class BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger) : IA
 
     [JSImport("shinySpeech.stopAudio", "shiny-speech")]
     private static partial void StopAudio();
+
+    [JSImport("shinySpeech.getVolume", "shiny-speech")]
+    private static partial float GetVolume();
+
+    [JSImport("shinySpeech.setVolume", "shiny-speech")]
+    private static partial void SetVolume(float volume);
+
+    [JSExport]
+    public static void OnVolumeChanged(float volume)
+        => current?.VolumeChanged?.Invoke(current, volume);
 }
