@@ -11,6 +11,8 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
     AVAudioConverter? converter;
     Stream? outputStream;
 
+    public event EventHandler<double>? InputLevelChanged;
+
 #if !MACOS
     // Snapshot of the shared session's profile before we switch it into the record-oriented
     // PlayAndRecord + VoiceChat configuration, so StopCaptureAsync can restore it. Without this,
@@ -84,13 +86,22 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         var pipe = new PipeStream();
         outputStream = pipe;
 
+        var throttle = new AudioLevelThrottle();
+
         inputNode.InstallTapOnBus(0, 4096, inputFormat, (buffer, when) =>
         {
             try
             {
                 var data = Convert(buffer, outputFormat);
-                if (data.Length > 0)
-                    pipe.Write(data, 0, data.Length);
+                if (data.Length == 0)
+                    return;
+
+                // Metered after conversion so the level reflects the PCM the consumer actually
+                // receives (and so the same code path covers every input hardware format).
+                if (throttle.TryEmit(AudioLevel.FromPcm16(data), out var level))
+                    InputLevelChanged?.Invoke(this, level);
+
+                pipe.Write(data, 0, data.Length);
             }
             catch (ObjectDisposedException)
             {

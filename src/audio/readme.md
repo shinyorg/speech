@@ -7,9 +7,12 @@ and Browser (WebAssembly).
 but is usable on its own:
 
 - **`IAudioSource`** — microphone capture that streams raw PCM audio (16kHz, 16-bit, mono) via a
-  thread-safe `PipeStream`, with runtime permission handling (`RequestAccess` / `AccessState`).
+  thread-safe `PipeStream`, with runtime permission handling (`RequestAccess` / `AccessState`) and a
+  normalized `InputLevelChanged` VU signal on every platform.
 - **`IAudioPlayer`** — stream playback (e.g. MP3) with optional normalized `AudioLevelChanged`
   metering for VU-style UI.
+- **`AudioLevel`** — the shared dBFS mapping behind every meter (`FromRms` / `FromPcm16` /
+  `FromSamples`), so input and output bars read on the same scale — including PCM you meter yourself.
 
 ## Getting Started
 

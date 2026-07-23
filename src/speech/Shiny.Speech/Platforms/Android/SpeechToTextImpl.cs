@@ -28,10 +28,12 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
         Android.Speech.SpeechRecognizer.IsRecognitionAvailable(Android.App.Application.Context);
 
     public bool IsListening { get; private set; }
+    public bool IsInputAnalysisSupported => true;
 
     public event EventHandler<SpeechRecognitionResult>? ResultReceived;
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
+    public event EventHandler<double>? InputLevelChanged;
 
     public Task<AccessState> RequestAccess()
     {
@@ -75,6 +77,7 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
             {
                 Error?.Invoke(this, error);
             },
+            onRms: rmsDb => InputLevelChanged?.Invoke(this, NormalizeRmsDb(rmsDb)),
             onFinalResult: () =>
             {
                 if (!IsListening)
@@ -158,6 +161,14 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
         return tcs.Task;
     }
 
+    // SpeechRecognizer reports a level in dB on its own scale — roughly -2 (silence) to 10 (loud),
+    // not dBFS — so it can't go through AudioLevel. Clamp that window into the shared 0–1 range.
+    const float MinRmsDb = -2f;
+    const float MaxRmsDb = 10f;
+
+    static double NormalizeRmsDb(float rmsDb)
+        => Math.Clamp((rmsDb - MinRmsDb) / (MaxRmsDb - MinRmsDb), 0f, 1f);
+
     bool IsDuplicateKeywordFinal(string text)
     {
         if (lastKeywordFinalText == null)
@@ -182,6 +193,7 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
         ILogger logger,
         Action<SpeechRecognitionResult> onResult,
         Action<SpeechRecognitionError> onError,
+        Action<float>? onRms = null,
         Action? onFinalResult = null
     ) : Java.Lang.Object, IRecognitionListener
     {
@@ -235,7 +247,7 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
         public void OnEndOfSpeech() =>
             logger.LogDebug("End of speech");
 
-        public void OnRmsChanged(float rmsdB) { }
+        public void OnRmsChanged(float rmsdB) => onRms?.Invoke(rmsdB);
         public void OnBufferReceived(byte[]? buffer) { }
         public void OnEvent(int eventType, Bundle? @params) { }
     }

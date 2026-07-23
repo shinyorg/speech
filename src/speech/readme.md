@@ -68,14 +68,28 @@ public class MyService(ITextToSpeechService tts)
 }
 ```
 
-### VU Meter (Audio Level)
+### VU Meters (Audio Levels)
 
-`ITextToSpeechService` and `IAudioPlayer` expose an `AudioLevelChanged` event that fires periodically while audio is playing with a normalized `0.0`–`1.0` RMS level. Check `IsPlayerAnalysisSupported` before binding UI.
+Both directions are metered, on the same normalized `0.0`–`1.0` scale (dBFS mapped from a -50 dB
+noise floor, so voice actually moves the bar).
+
+**Outgoing — playback / TTS.** `ITextToSpeechService` and `IAudioPlayer` raise `AudioLevelChanged`
+while audio is playing. Gate UI on `IsPlayerAnalysisSupported`.
 
 ```csharp
 if (tts.IsPlayerAnalysisSupported)
     tts.AudioLevelChanged += (s, level) =>
-        MainThread.BeginInvokeOnMainThread(() => MyVuBar.Progress = level);
+        MainThread.BeginInvokeOnMainThread(() => SpeakingBar.Progress = level);
+```
+
+**Incoming — microphone.** `ISpeechToTextService` raises `InputLevelChanged` while listening — gate
+UI on `IsInputAnalysisSupported`. The lower-level `IAudioSource.InputLevelChanged` (raw capture) and
+`IAudioMonitor.InputLevelChanged` (live mic-to-output) emit the same signal.
+
+```csharp
+if (stt.IsInputAnalysisSupported)
+    stt.InputLevelChanged += (s, level) =>
+        MainThread.BeginInvokeOnMainThread(() => ListeningBar.Progress = level);
 ```
 
 | Surface | iOS / macOS | Android | Windows | Browser |
@@ -83,8 +97,22 @@ if (tts.IsPlayerAnalysisSupported)
 | Native `ITextToSpeechService` | ✅ | ✅ | ❌ | ❌ |
 | Cloud `ITextToSpeechService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ❌ | ❌ |
 | `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ |
+| Cloud `ISpeechToTextService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ✅ | ✅ |
+| Native `ISpeechToTextService` | ✅ | ✅ | ❌ | ❌ |
+| `IAudioSource` (raw capture) | ✅ | ✅ | ✅ | ✅ |
+| `IAudioMonitor` (live monitor) | ✅ | ✅ | n/a | n/a |
 
-On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` + `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and kept warm across utterances — only the first utterance pays ~50–150 ms additional startup.
+Cloud recognition meters the `IAudioSource` feeding the provider, so it works everywhere. Native
+recognition depends on the platform: Apple taps the recognizer's own input node, Android reports the
+`SpeechRecognizer` RMS callback, while Windows' and the browser's recognizers own the mic and expose
+no level at all.
+
+On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` +
+`AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and
+kept warm across utterances — only the first utterance pays ~50–150 ms additional startup.
+
+Levels are raised off the UI thread and throttled to ~20/sec on the capture side; marshal before
+binding. Reset your bound value to `0` when playback/listening ends so the meter drains.
 
 ### Speech-to-Text
 

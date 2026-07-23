@@ -31,6 +31,10 @@ public class CloudSpeechToText : ISpeechToTextService
         // Forward non-fatal provider errors (e.g. transient network failures during
         // continuous recognition) to the service-level Error event.
         provider.Error += (_, err) => Error?.Invoke(this, err);
+
+        // The capture source is metering the same audio it streams to the provider, so the
+        // "listening" meter works on every platform regardless of which cloud provider is in play.
+        audioSource.InputLevelChanged += (_, level) => InputLevelChanged?.Invoke(this, level);
     }
 
     // Dedup state — suppress same-text keyword re-fires within a short window.
@@ -40,10 +44,12 @@ public class CloudSpeechToText : ISpeechToTextService
 
     public bool IsSupported => true;
     public bool IsListening { get; private set; }
+    public bool IsInputAnalysisSupported => true;
 
     public event EventHandler<SpeechRecognitionResult>? ResultReceived;
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
+    public event EventHandler<double>? InputLevelChanged;
 
     public Task<AccessState> RequestAccess()
         => audioSource.RequestAccess();

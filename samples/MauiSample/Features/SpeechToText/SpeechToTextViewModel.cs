@@ -17,6 +17,11 @@ public partial class SpeechToTextViewModel : ObservableObject
     {
         this.stt = stt;
 
+        // Mic VU meter while listening — supported by every cloud provider plus the native Apple /
+        // Android recognizers; Windows and the browser's Web Speech API expose no level.
+        IsInputLevelSupported = stt.IsInputAnalysisSupported;
+        stt.InputLevelChanged += OnInputLevel;
+
         AvailableLocales = CultureInfo
             .GetCultures(CultureTypes.SpecificCultures)
             .OrderBy(c => c.DisplayName)
@@ -115,6 +120,14 @@ public partial class SpeechToTextViewModel : ObservableObject
     [ObservableProperty]
     string statusText = "Ready";
 
+    public bool IsInputLevelSupported { get; }
+
+    [ObservableProperty]
+    double inputLevel;
+
+    void OnInputLevel(object? sender, double value)
+        => MainThread.BeginInvokeOnMainThread(() => InputLevel = IsListening ? value : 0);
+
     [ObservableProperty]
     string? recognizedText;
 
@@ -188,6 +201,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         finally
         {
             IsListening = false;
+            InputLevel = 0;
             if (StatusText.StartsWith("Listening"))
                 StatusText = "Done";
         }

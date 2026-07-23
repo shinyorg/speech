@@ -15,6 +15,8 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
     NoiseSuppressor? noiseSuppressor;
     AutomaticGainControl? gainControl;
 
+    public event EventHandler<double>? InputLevelChanged;
+
     public Task<AccessState> RequestAccess()
         => platform.RequestAccess(Manifest.Permission.RecordAudio);
 
@@ -62,6 +64,8 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
         var record = audioRecord;
         var sink = pipe;
 
+        var throttle = new AudioLevelThrottle();
+
         _ = Task.Run(() =>
         {
             var buffer = new byte[bufferSize];
@@ -70,6 +74,9 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
                 var bytesRead = record.Read(buffer, 0, buffer.Length);
                 if (bytesRead > 0)
                 {
+                    if (throttle.TryEmit(AudioLevel.FromPcm16(buffer.AsSpan(0, bytesRead)), out var level))
+                        InputLevelChanged?.Invoke(this, level);
+
                     try
                     {
                         sink.Write(buffer, 0, bytesRead);

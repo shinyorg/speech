@@ -19,9 +19,14 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
     public bool IsSupported => true;
     public bool IsListening { get; private set; }
 
+    // Windows.Media.SpeechRecognition owns the capture endpoint and surfaces no audio level, so
+    // there is nothing to meter. Use a cloud provider (which captures via IAudioSource) for a VU meter.
+    public bool IsInputAnalysisSupported => false;
+
     public event EventHandler<SpeechRecognitionResult>? ResultReceived;
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
+    public event EventHandler<double>? InputLevelChanged;
 
     public async Task<AccessState> RequestAccess()
     {

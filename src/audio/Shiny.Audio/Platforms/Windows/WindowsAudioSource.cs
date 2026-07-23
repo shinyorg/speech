@@ -13,6 +13,9 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
     AudioDeviceInputNode? inputNode;
     AudioFrameOutputNode? outputNode;
     PipeStream? pipe;
+    AudioLevelThrottle? levelThrottle;
+
+    public event EventHandler<double>? InputLevelChanged;
 
     public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
@@ -47,6 +50,7 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         inputNode.AddOutgoingConnection(outputNode);
 
         pipe = new PipeStream();
+        levelThrottle = new AudioLevelThrottle();
 
         audioGraph.QuantumStarted += (graph, _) =>
         {
@@ -72,6 +76,12 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
             {
                 var data = new byte[capacity];
                 Marshal.Copy((IntPtr)dataPtr, data, 0, (int)capacity);
+
+                // QuantumStarted fires every 10ms — throttled so a meter doesn't get 100 events/sec.
+                var throttle = levelThrottle;
+                if (throttle != null && throttle.TryEmit(AudioLevel.FromPcm16(data), out var level))
+                    InputLevelChanged?.Invoke(this, level);
+
                 try
                 {
                     pipe?.Write(data, 0, data.Length);
@@ -95,6 +105,7 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         outputNode = null;
         audioGraph = null;
         pipe = null;
+        levelThrottle = null;
 
         logger.LogDebug("Windows audio capture stopped");
         return Task.CompletedTask;

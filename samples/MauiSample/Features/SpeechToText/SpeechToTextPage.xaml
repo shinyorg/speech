@@ -23,6 +23,16 @@
                            FontSize="12"
                            TextColor="{StaticResource Gray400}"
                            IsVisible="{Binding HasConfidence}" />
+
+                    <!-- Mic VU meter — hidden where the platform recognizer exposes no level -->
+                    <Label Text="Mic level"
+                           Margin="0,8,0,0"
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}"
+                           IsVisible="{Binding IsInputLevelSupported}" />
+                    <ProgressBar Progress="{Binding InputLevel}"
+                                 ProgressColor="{StaticResource Primary}"
+                                 IsVisible="{Binding IsInputLevelSupported}" />
                 </VerticalStackLayout>
             </Border>
 

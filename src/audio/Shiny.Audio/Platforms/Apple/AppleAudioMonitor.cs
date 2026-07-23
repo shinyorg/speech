@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Runtime.InteropServices;
 using AVFoundation;
 using Foundation;
 using Microsoft.Extensions.Logging;
@@ -128,7 +127,7 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
         var format = input.GetBusOutputFormat(0);
         e.Connect(input, e.MainMixerNode, format);
         e.MainMixerNode.OutputVolume = (float)gain;
-        input.InstallTapOnBus(0, 1024, format, (buffer, when) => InputLevelChanged?.Invoke(this, ComputeLevel(buffer)));
+        input.InstallTapOnBus(0, 1024, format, (buffer, when) => InputLevelChanged?.Invoke(this, AppleAudioLevel.FromBuffer(buffer)));
 
         e.Prepare();
         e.StartAndReturnError(out var startErr);
@@ -257,20 +256,4 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
             out _);
     }
 #endif
-
-    static double ComputeLevel(AVAudioPcmBuffer buffer)
-    {
-        var frames = (int)buffer.FrameLength;
-        if (frames == 0 || buffer.FloatChannelData == IntPtr.Zero)
-            return 0;
-
-        var channel = Marshal.ReadIntPtr(buffer.FloatChannelData); // first channel
-        var data = new float[frames];
-        Marshal.Copy(channel, data, 0, frames);
-
-        double sum = 0;
-        foreach (var s in data)
-            sum += s * s;
-        return AudioLevel.FromRms(Math.Sqrt(sum / frames));
-    }
 }

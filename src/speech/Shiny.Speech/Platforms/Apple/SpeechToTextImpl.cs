@@ -31,10 +31,12 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
         SFSpeechRecognizer.AuthorizationStatus != SFSpeechRecognizerAuthorizationStatus.Restricted;
 
     public bool IsListening { get; private set; }
+    public bool IsInputAnalysisSupported => true;
 
     public event EventHandler<SpeechRecognitionResult>? ResultReceived;
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
+    public event EventHandler<double>? InputLevelChanged;
 
     public Task<AccessState> RequestAccess()
     {
@@ -125,8 +127,15 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             // alive across recognition-task re-arms; each new buffer is routed to whatever the
             // current `request` is at the moment the tap fires, so the mic stays open even after
             // SFSpeechRecognitionTask completes a single utterance.
+            var levelThrottle = new AudioLevelThrottle();
+
             inputNode.InstallTapOnBus(0, 1024, recordingFormat, (buffer, when) =>
             {
+                // The tap already has the mic buffers the recognizer consumes, so metering here
+                // costs nothing extra and works whether recognition is on-device or server-side.
+                if (levelThrottle.TryEmit(AppleAudioLevel.FromBuffer(buffer), out var level))
+                    this.InputLevelChanged?.Invoke(this, level);
+
                 try { this.request?.Append(buffer); }
                 catch (Exception ex) { logger.LogDebug(ex, "Ignored buffer-append during request swap"); }
             });

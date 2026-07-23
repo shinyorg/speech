@@ -20,9 +20,14 @@ public partial class BrowserSpeechToTextService(ILogger<BrowserSpeechToTextServi
     public bool IsSupported => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && IsRecognitionSupported();
     public bool IsListening { get; private set; }
 
+    // The Web Speech API owns the mic and exposes no analyser node, so there is nothing to meter.
+    // Use a cloud provider (which captures via IAudioSource) for a VU meter in the browser.
+    public bool IsInputAnalysisSupported => false;
+
     public event EventHandler<SpeechRecognitionResult>? ResultReceived;
     public event EventHandler<string>? KeywordHeard;
     public event EventHandler<SpeechRecognitionError>? Error;
+    public event EventHandler<double>? InputLevelChanged;
 
     public async Task<AccessState> RequestAccess()
     {

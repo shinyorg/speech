@@ -117,7 +117,7 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
                     {
                         break; // track released on the Stop path
                     }
-                    InputLevelChanged?.Invoke(this, ComputeRms(buffer, read));
+                    InputLevelChanged?.Invoke(this, AudioLevel.FromPcm16(buffer.AsSpan(0, read)));
                 }
             }
         }, token);
@@ -273,20 +273,5 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
         gainControl?.Release();
         gainControl?.Dispose();
         gainControl = null;
-    }
-
-    static double ComputeRms(byte[] buffer, int length)
-    {
-        var samples = length / 2;
-        if (samples == 0)
-            return 0;
-
-        double sum = 0;
-        for (var i = 0; i + 1 < length; i += 2)
-        {
-            var s = BitConverter.ToInt16(buffer, i) / 32768.0;
-            sum += s * s;
-        }
-        return AudioLevel.FromRms(Math.Sqrt(sum / samples));
     }
 }

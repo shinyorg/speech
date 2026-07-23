@@ -8,6 +8,12 @@ namespace Shiny.Audio;
 public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IAudioSource
 {
     static PipeStream? activePipe;
+    // The JS interop callbacks are static, so the capturing instance (and its throttle) has to be
+    // reachable statically to raise the level event. Capture is single-session per app anyway.
+    static BrowserAudioSource? activeSource;
+    static AudioLevelThrottle? levelThrottle;
+
+    public event EventHandler<double>? InputLevelChanged;
 
     public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
     {
@@ -15,6 +21,8 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
 
         var pipe = new PipeStream();
         activePipe = pipe;
+        activeSource = this;
+        levelThrottle = new AudioLevelThrottle();
 
         await StartMicrophoneCaptureAsync(
             processing?.EchoCancellation ?? false,
@@ -31,6 +39,9 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
         StopMicrophoneCapture();
         activePipe?.Dispose();
         activePipe = null;
+        levelThrottle = null;
+        if (ReferenceEquals(activeSource, this))
+            activeSource = null;
         logger.LogDebug("Browser audio capture stopped");
         return Task.CompletedTask;
     }
@@ -54,6 +65,11 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
     [JSExport]
     public static void OnAudioData(byte[] pcmData)
     {
+        var source = activeSource;
+        var throttle = levelThrottle;
+        if (source != null && throttle != null && throttle.TryEmit(AudioLevel.FromPcm16(pcmData), out var level))
+            source.InputLevelChanged?.Invoke(source, level);
+
         try
         {
             activePipe?.Write(pcmData, 0, pcmData.Length);
@@ -68,5 +84,7 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
     {
         activePipe?.Dispose();
         activePipe = null;
+        activeSource = null;
+        levelThrottle = null;
     }
 }

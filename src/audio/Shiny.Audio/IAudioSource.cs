@@ -27,4 +27,15 @@ public interface IAudioSource : IAsyncDisposable
     /// Stop capturing audio.
     /// </summary>
     Task StopCaptureAsync();
+
+    /// <summary>
+    /// Fires periodically while capturing with the microphone level normalized 0.0 – 1.0 — the
+    /// "listening" counterpart to <see cref="IAudioPlayer.AudioLevelChanged"/>. Levels are computed
+    /// from the captured PCM (see <see cref="AudioLevel"/>) and throttled to roughly 20 events per
+    /// second, so they can drive a VU meter directly. Supported on every platform.
+    /// </summary>
+    /// <remarks>
+    /// Raised on the platform's capture thread — marshal to the UI thread before binding.
+    /// </remarks>
+    event EventHandler<double>? InputLevelChanged;
 }
