@@ -148,10 +148,22 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         // over the ducked music). We do NOT force DefaultToSpeaker: it's a no-op for plain Playback
         // (which already defaults to the main speaker) and pins output local, preventing playback from
         // following the system output route to headphones / Bluetooth / AirPlay (HomePod).
+        //
+        // Always OR in MixWithOthers so we never hold an EXCLUSIVE Playback session. This player
+        // activates the shared session and never deactivates it, so a bare announcement (no duck
+        // active, CategoryOptions == 0) would otherwise leave the session active with exclusive
+        // Playback. That silently ducks any OUT-OF-PROCESS audio — notably a walkout song played via
+        // MPMusicPlayerController (Shiny.Music) — so the next song "starts really quiet" until
+        // something flips the session back to mixing. MixWithOthers keeps us non-exclusive; it does
+        // NOT cancel a concurrent DuckOthers (they combine), so a real walkout announcement is still
+        // heard over its ducked music.
         var session = AVAudioSession.SharedInstance();
         var playAndRecord = AVAudioSessionCategory.PlayAndRecord.GetConstant();
         if (session.Category != playAndRecord)
-            session.SetCategory(AVAudioSessionCategory.Playback, session.CategoryOptions, out _);
+            session.SetCategory(
+                AVAudioSessionCategory.Playback,
+                session.CategoryOptions | AVAudioSessionCategoryOptions.MixWithOthers,
+                out _);
         session.SetActive(true, out _);
 #endif
 
