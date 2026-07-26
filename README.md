@@ -262,6 +262,37 @@ public class PaController(IAudio audio)
 `IAudioMonitor` and `IAudioDevices` are implemented on **iOS/Mac Catalyst and Android**; the facade
 throws `PlatformNotSupportedException` if you touch them elsewhere.
 
+#### Classifying the route
+
+`AudioDevice.Type` normalizes the OS route into `AudioDeviceType` — including wired: `WiredHeadphones`
+(output only) and `WiredHeadset` (output **plus** mic). Rather than matching every variant by hand, use
+the classification helpers:
+
+```csharp
+var output = audio.Devices.CurrentOutput;
+
+if (output?.IsWired() == true)      { /* 3.5mm jack, Lightning, or USB-C */ }
+if (output?.IsBluetooth() == true)  { /* HFP/SCO or A2DP */ }
+if (output?.IsBuiltIn() == true)    { /* phone speaker or earpiece — nothing attached */ }
+
+// "Is audio private to the user?" — e.g. before speaking a TTS response out loud.
+if (output?.IsHeadphones() == true)
+    await audio.Player.Play(reply);
+
+// Will capture come from the accessory, or fall back to the phone mic?
+var accessoryMic = output?.HasMicrophone() == true;
+```
+
+Each helper also exists on `AudioDeviceType` directly. Subscribe to `IAudioDevices.Changed` to react to
+plug/unplug — it fires on both platforms (iOS route-change notification, Android device callback).
+
+- **`IsWired()` includes `Usb`.** On handsets with no 3.5mm jack the wired option *is* USB-C, and neither
+  platform reports those as a `Wired*` type (Android says `UsbHeadset`/`UsbDevice`, iOS says
+  `PortUsbAudio`). The trade-off: a USB audio interface or DAC also answers true. Use `IsHeadphones()`
+  when you specifically mean something worn on the head, accepting that it misses USB-C earbuds.
+- **Bluetooth can't be narrowed.** A paired A2DP route is equally a set of earbuds or a room speaker;
+  no platform API distinguishes them, so `IsHeadphones()` counts all Bluetooth as private.
+
 - **Bluetooth speaker vs. echo cancellation (iOS):** enabling `AudioProcessingOptions` forces Bluetooth
   onto the low-quality HFP call profile, so a Bluetooth *speaker* (A2DP) drops back to the phone. Leave
   processing **off** to reach a BT speaker; turn it on only for phone-speaker output where feedback is a
