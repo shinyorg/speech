@@ -37,20 +37,38 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         priorCategory = audioSession.Category;
         priorOptions = audioSession.CategoryOptions;
         priorMode = audioSession.Mode;
+        // A Bluetooth mic runs over HFP, which caps capture at 8 kHz narrowband — so whatever is paired
+        // silently decides the bandwidth you record. Callers analysing the signal (speaker embeddings,
+        // wake words) opt out with AudioProcessingOptions.AllowBluetooth = false.
+        var categoryOptions = AVAudioSessionCategoryOptions.DefaultToSpeaker;
+        if (processing?.AllowBluetooth != false)
+        {
+            categoryOptions |= AVAudioSessionCategoryOptions.AllowBluetooth
+                | AVAudioSessionCategoryOptions.AllowBluetoothA2DP;
+        }
+
         // PlayAndRecord (not Record) mirrors the known-good SpeechToText capture path: it carries an
         // output route, so the output-oriented Bluetooth/speaker options are all valid. Pairing those
         // options with the input-only Record category instead makes SetCategory fail with OSStatus -50.
         audioSession.SetCategory(
             AVAudioSessionCategory.PlayAndRecord,
-            AVAudioSessionCategoryOptions.AllowBluetooth
-                | AVAudioSessionCategoryOptions.AllowBluetoothA2DP
-                | AVAudioSessionCategoryOptions.DefaultToSpeaker,
+            categoryOptions,
             out var categoryError
         );
         if (categoryError != null)
             throw new InvalidOperationException($"Failed to set audio session category: {categoryError.LocalizedDescription}");
 
-        audioSession.SetMode(AVAudioSessionMode.VoiceChat.GetConstant()!, out _);
+        // VoiceChat engages Apple's voice-processing chain (AEC/NS/AGC) at the session level, so it must
+        // only be used when the caller asked for processing — same rule AppleAudioMonitor follows. When
+        // nothing is requested, Measurement is the mode that tells iOS to apply as little input
+        // processing as it can, which is what "capture raw input" has to mean for a source whose output
+        // may feed a model rather than a listener. AGC in particular is adaptive and non-linear: it
+        // normalises away exactly the speaker/channel characteristics an embedding model measures, so
+        // two recordings of one person come back different.
+        var mode = processing?.AnyEnabled == true
+            ? AVAudioSessionMode.VoiceChat
+            : AVAudioSessionMode.Measurement;
+        audioSession.SetMode(mode.GetConstant()!, out _);
 
         audioSession.SetActive(true, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out var activeError);
         if (activeError != null)
@@ -117,7 +135,20 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         if (error != null)
             throw new InvalidOperationException($"Failed to start audio engine: {error.LocalizedDescription}");
 
+#if MACOS
         logger.LogDebug("Apple audio capture started (native {InRate}Hz/{InChannels}ch → 16000Hz/1ch PCM16)", inputFormat.SampleRate, inputFormat.ChannelCount);
+#else
+        // The session mode and the actual input route are logged because they are what silently changes
+        // the captured signal: a Bluetooth route means 8 kHz HFP, and VoiceChat means AGC/NS/AEC.
+        var route = AVAudioSession.SharedInstance().CurrentRoute?.Inputs?.FirstOrDefault();
+        logger.LogDebug(
+            "Apple audio capture started (native {InRate}Hz/{InChannels}ch → 16000Hz/1ch PCM16, mode={Mode}, input={Input})",
+            inputFormat.SampleRate,
+            inputFormat.ChannelCount,
+            mode,
+            route?.PortType ?? "unknown"
+        );
+#endif
         return Task.FromResult<Stream>(pipe);
     }
 

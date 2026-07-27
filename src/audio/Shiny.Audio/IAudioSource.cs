@@ -20,6 +20,12 @@ public interface IAudioSource : IAsyncDisposable
     /// Optional platform voice-processing effects (echo cancellation, noise suppression,
     /// automatic gain control) to apply to the capture session. <c>null</c> captures raw
     /// input. Effects are best-effort and device-dependent.
+    /// <para>
+    /// If the captured audio feeds a model rather than a listener — speaker recognition, wake
+    /// words — pass <see cref="AudioProcessingOptions.Analysis"/>: the effects above are adaptive
+    /// and normalize away the speaker/channel characteristics such models measure, and a Bluetooth
+    /// mic caps capture at 8 kHz narrowband.
+    /// </para>
     /// </param>
     Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default);
 

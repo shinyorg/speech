@@ -373,7 +373,17 @@ var stream = await audioSource.StartCaptureAsync(new AudioProcessingOptions
     NoiseSuppression = true,      // attenuates steady background noise
     AutomaticGainControl = true   // normalizes capture level
 });
+
+// capture for a *model* (speaker recognition, wake words) rather than a listener:
+var raw = await audioSource.StartCaptureAsync(AudioProcessingOptions.Analysis);
 ```
+
+`AudioProcessingOptions.Analysis` is `None` plus `AllowBluetooth = false`, and it matters whenever the
+audio feeds an embedding model. The effects above are adaptive and exist to normalize away speaker and
+channel characteristics — the very thing such a model measures — so two recordings of one person come
+back different; and a Bluetooth mic runs over HFP at 8 kHz narrowband, which quietly makes the captured
+bandwidth depend on what is paired. On iOS/Mac Catalyst, requesting no effects puts the session in
+`Measurement` mode (minimum system input processing) rather than `VoiceChat`.
 
 Each flag is **best-effort** and maps to native voice processing:
 

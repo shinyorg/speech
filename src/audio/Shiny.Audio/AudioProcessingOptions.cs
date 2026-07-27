@@ -26,6 +26,21 @@ public record AudioProcessingOptions
     public bool AutomaticGainControl { get; init; }
 
     /// <summary>
+    /// Allow capture to route to a paired Bluetooth headset. Default <c>true</c>.
+    /// <para>
+    /// Set this <c>false</c> when the captured audio is <i>analysed</i> rather than listened to —
+    /// speaker recognition/verification, keyword spotting, anything feeding an embedding model. A
+    /// Bluetooth mic runs over HFP, which caps capture at 8 kHz narrowband, so the bandwidth you
+    /// record silently depends on what happens to be paired.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// iOS/Mac Catalyst only — it drops the Bluetooth options from the audio session category.
+    /// Android's raw mic source and Windows capture never route to a Bluetooth mic implicitly.
+    /// </remarks>
+    public bool AllowBluetooth { get; init; } = true;
+
+    /// <summary>
     /// True when at least one effect is requested.
     /// </summary>
     public bool AnyEnabled => this.EchoCancellation || this.NoiseSuppression || this.AutomaticGainControl;
@@ -40,4 +55,12 @@ public record AudioProcessingOptions
 
     /// <summary>No processing — capture raw microphone input.</summary>
     public static AudioProcessingOptions None => new();
+
+    /// <summary>
+    /// No processing and no Bluetooth route — capture the built-in mic as unaltered as the platform
+    /// allows. Use this when the signal feeds a model (speaker embeddings, wake words): the effects in
+    /// <see cref="VoiceChat"/> are adaptive and non-linear, so they change the very characteristics
+    /// such models measure, and two recordings of one person come out different.
+    /// </summary>
+    public static AudioProcessingOptions Analysis => new() { AllowBluetooth = false };
 }
