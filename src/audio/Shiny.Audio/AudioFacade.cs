@@ -14,8 +14,14 @@ public class AudioFacade(IServiceProvider services) : IAudio
     public IAudioSource Source => services.GetRequiredService<IAudioSource>();
 
     public IAudioMonitor Monitor => services.GetService<IAudioMonitor>()
-        ?? throw new PlatformNotSupportedException("Live audio monitoring is only available on iOS/Mac Catalyst and Android.");
+        ?? throw new PlatformNotSupportedException($"Live audio monitoring is only available on iOS/Mac Catalyst, Android and Linux.{LinuxHint}");
 
     public IAudioDevices Devices => services.GetService<IAudioDevices>()
-        ?? throw new PlatformNotSupportedException("Audio device enumeration is only available on iOS/Mac Catalyst and Android.");
+        ?? throw new PlatformNotSupportedException($"Audio device enumeration is only available on iOS/Mac Catalyst, Android and Linux.{LinuxHint}");
+
+    // Linux support ships in a separate package, so an unregistered service there is far more
+    // likely to be a missing AddLinuxAudio() call than an unsupported platform.
+    static string LinuxHint => OperatingSystem.IsLinux()
+        ? " On Linux, install Shiny.Audio.Linux and call AddLinuxAudio()."
+        : String.Empty;
 }

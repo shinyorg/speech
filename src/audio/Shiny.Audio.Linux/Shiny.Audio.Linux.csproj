@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <!-- .NET has no `-linux` target platform, so Linux support is a plain base-TFM package
+             guarded at runtime via OperatingSystem.IsLinux(). -->
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+        <RootNamespace>Shiny.Audio</RootNamespace>
+        <!-- Required by the LibraryImport source generator, which emits unsafe marshalling stubs. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Description>Shiny Audio for Linux - microphone capture, playback, device enumeration and live mic monitoring over PulseAudio/PipeWire with an ALSA fallback</Description>
+        <PackageTags>linux audio alsa pulseaudio pipewire recording playback microphone pcm shiny</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.Audio\Shiny.Audio.csproj" />
+        <PackageReference Include="NLayer" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    </ItemGroup>
+</Project>

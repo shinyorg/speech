@@ -20,6 +20,8 @@
         <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="10.0.2"/>
         <PackageVersion Include="OpenAI" Version="2.12.0"/>
         <PackageVersion Include="typecast-csharp" Version="0.3.7"/>
+        <!-- Managed MP3 decoder for the Linux player: Linux has no system decoder to P/Invoke. -->
+        <PackageVersion Include="NLayer" Version="2.0.1"/>
     </ItemGroup>
     <ItemGroup>
         <PackageVersion Include="Shiny.Hosting.Maui" Version="5.2.3"/>

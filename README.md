@@ -13,6 +13,7 @@ All packages share a single version, defined by `version.json` at the repo root 
 | Package | Description | Targets |
 |---------|-------------|---------|
 | **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Audio.Linux** | Linux backend for all four audio services over PulseAudio/PipeWire with an ALSA fallback. Ships separately because it carries a managed MP3 decoder (`NLayer`) — Linux has no system decoder to call | net10.0 |
 | **Shiny.Speech** | Core STT/TTS interfaces + native platform implementations (references Shiny.Audio for capture/playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
@@ -169,20 +170,22 @@ if (stt.IsInputAnalysisSupported)
         MainThread.BeginInvokeOnMainThread(() => ListeningBar.Progress = level);
 ```
 
-| Surface | iOS / macOS | Android | Windows | Browser |
-|---|---|---|---|---|
-| Native `ITextToSpeechService` | ✅ | ✅ | ❌ | ❌ |
-| Cloud `ITextToSpeechService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ❌ | ❌ |
-| `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ |
-| Cloud `ISpeechToTextService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ✅ | ✅ |
-| Native `ISpeechToTextService` | ✅ | ✅ | ❌ | ❌ |
-| `IAudioSource` (raw capture) | ✅ | ✅ | ✅ | ✅ |
-| `IAudioMonitor` (live monitor) | ✅ | ✅ | n/a | n/a |
+| Surface | iOS / macOS | Android | Windows | Browser | Linux |
+|---|---|---|---|---|---|
+| Native `ITextToSpeechService` | ✅ | ✅ | ❌ | ❌ | n/a |
+| Cloud `ITextToSpeechService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ❌ | ❌ | ✅ |
+| `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Cloud `ISpeechToTextService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Native `ISpeechToTextService` | ✅ | ✅ | ❌ | ❌ | n/a |
+| `IAudioSource` (raw capture) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `IAudioMonitor` (live monitor) | ✅ | ✅ | n/a | n/a | ✅ |
 
 Cloud recognition meters the `IAudioSource` feeding the provider, so it works everywhere. Native
 recognition depends on the platform: Apple taps the recognizer's own input node, Android reports the
 `SpeechRecognizer` RMS callback, while Windows' and the browser's recognizers own the mic and expose
-no level at all.
+no level at all. Linux has no OS speech engine to wrap, so there is no native STT/TTS there at all —
+but every cloud provider works, and playback metering is supported because the Linux player decodes
+to PCM in managed code and sees every sample.
 
 On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` +
 `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and
@@ -217,10 +220,16 @@ player.VolumeChanged += (_, v) =>
 | macOS | ✅ | ✅ * | CoreAudio property listener | HAL virtual main volume of the default output device |
 | iOS / Mac Catalyst | ✅ | ❌ | KVO on `outputVolume` | `AVAudioSession.OutputVolume` (read-only) |
 | Browser (WASM) | ✅ | ✅ | Echoed on set | `HTMLAudioElement.volume` (app-local, **not** the OS volume) |
+| Linux (PulseAudio / PipeWire) | ✅ | ✅ | Server subscription | Default sink volume via `pa_context_set_sink_volume_by_name` |
+| Linux (ALSA fallback) | ✅ † | ❌ | n/a | n/a — binding `snd_mixer` isn't worth it for the fallback path |
 
 \* macOS is settable when the current default output device exposes a settable virtual main volume
 (most built-in / USB devices do; some HDMI / aggregate devices don't) — this is reflected by
 `IsVolumeControlSupported`.
+
+† On the ALSA fallback `Volume` reads back the last value set in-process (defaulting to `1.0`) rather
+than a real device level, and `IsVolumeControlSupported` is `false` so the setter throws. Check it
+before assigning, as on iOS.
 
 On device platforms `Volume` is the **system media volume** the hardware buttons control, independent
 of any per-request TTS volume. On iOS / Mac Catalyst there is no supported OS API to change the system
@@ -456,6 +465,49 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 | Android 26+ | SpeechRecognizer | Android TTS | AudioRecord | MediaPlayer |
 | Windows 10 19041+ | Windows.Media.SpeechRecognition | Windows.Media.SpeechSynthesis | AudioGraph | MediaPlayer |
 | Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` |
+| Linux (`Shiny.Audio.Linux`) | ❌ native — use a cloud provider | ❌ native — use a cloud provider | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | PulseAudio / PipeWire (`pa_simple`), ALSA fallback |
+
+### Linux
+
+Linux support lives in a separate **`Shiny.Audio.Linux`** package. It provides all four audio
+services — capture, playback, device enumeration and live mic monitoring — over PulseAudio/PipeWire,
+falling back to ALSA where no sound server is running (headless boxes, minimal containers, Raspberry
+Pi images).
+
+```csharp
+using Shiny;
+
+// Call this BEFORE AddSpeechServices() / AddCloudSpeechToText<T>() — those use TryAdd,
+// so whatever is registered first wins. It is a no-op when not running on Linux, so it
+// is safe to leave in shared startup code.
+builder.Services.AddLinuxAudio();
+
+builder.Services.AddCloudSpeechToText<AzureSpeechToTextProvider>();
+builder.Services.AddCloudTextToSpeech<AzureTextToSpeechProvider>();
+```
+
+**There is no native Linux STT/TTS** — Linux has no OS speech engine to wrap the way iOS, Android and
+Windows do, so `AddSpeechToText()` / `AddTextToSpeech()` register nothing there. Use any of the cloud
+providers (Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI); they are pure HTTP over the
+PCM stream and work unchanged once `AddLinuxAudio()` has supplied an `IAudioSource`.
+
+Notes:
+
+- **No resampler ships in this library.** Streams are opened at exactly the format required (16 kHz
+  mono for capture, a decoded clip's native rate for playback); PulseAudio converts server-side and
+  ALSA's `default` device converts through its `plug` plugin.
+- **Playback decodes in managed code.** Linux has no system media decoder to hand a stream to, so
+  MP3 (what Azure, OpenAI and ElevenLabs return by default) is decoded with `NLayer`, and WAV/PCM
+  directly. Other containers throw `NotSupportedException` naming the format.
+- **Voice processing is best-effort.** PulseAudio exposes echo cancellation as a virtual source from
+  `module-echo-cancel`; when it is loaded, `AudioProcessingOptions` with `EchoCancellation` selects
+  it, otherwise capture is raw.
+- **Runtime dependencies** are the distro's own: `libpulse-simple.so.0` (usually `libpulse0`) or
+  `libasound.so.2` (usually `libasound2`). Check `LinuxAudioServiceCollectionExtensions.IsLinuxAudioAvailable`
+  at startup to fail fast where neither is present.
+- `IAudioDevices.ShowOutputPicker()` is a no-op — Linux has no system route picker equivalent to
+  iOS's `AVRoutePickerView`; routing lives in the desktop environment's sound settings. `Changed`
+  fires on PulseAudio/PipeWire only (ALSA has no change notification).
 
 ### Browser (Blazor WebAssembly)
 
