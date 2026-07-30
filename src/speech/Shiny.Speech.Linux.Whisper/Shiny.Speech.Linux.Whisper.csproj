@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <!-- .NET has no `-linux` target platform, so Linux support is a plain base-TFM package
+             guarded at runtime via OperatingSystem.IsLinux(). -->
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+        <RootNamespace>Shiny.Speech.Linux</RootNamespace>
+        <Description>Shiny Speech for Linux - on-device, offline speech-to-text using Whisper (whisper.cpp) with no cloud account and no network</Description>
+        <PackageTags>linux raspberrypi whisper whispercpp stt speech-to-text offline ondevice shiny</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.Speech.Cloud\Shiny.Speech.Cloud.csproj" />
+        <PackageReference Include="Whisper.net" />
+        <!-- CPU runtime — covers linux-x64, linux-arm64 and linux-arm. Consumers can add
+             Whisper.net.Runtime.NoAvx (pre-AVX x64) or Whisper.net.Runtime.Cuda themselves;
+             Whisper.net's native loader probes whatever is present. -->
+        <PackageReference Include="Whisper.net.Runtime" />
+    </ItemGroup>
+</Project>

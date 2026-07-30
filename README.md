@@ -19,6 +19,7 @@ All packages share a single version, defined by `version.json` at the repo root 
 | **Shiny.Speech.Azure** | Azure AI Speech provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.Typecast** | Typecast provider (TTS only, via the `typecast-csharp` SDK) | net10.0 |
+| **Shiny.Speech.Linux.Whisper** | On-device, offline STT for Linux (incl. Raspberry Pi) running Whisper locally through whisper.cpp — no cloud account, no network | net10.0 |
 | **Shiny.AiConversation** | Central `IAiConversationService` orchestrating chat + the full voice loop | net10.0 (+ MAUI platforms) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
@@ -177,6 +178,7 @@ if (stt.IsInputAnalysisSupported)
 | `IAudioPlayer` (generic playback) | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Cloud `ISpeechToTextService` (Azure / OpenAI / ElevenLabs / custom) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Native `ISpeechToTextService` | ✅ | ✅ | ❌ | ❌ | n/a |
+| On-device `ISpeechToTextService` (Whisper) | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `IAudioSource` (raw capture) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `IAudioMonitor` (live monitor) | ✅ | ✅ | n/a | n/a | ✅ |
 
@@ -184,8 +186,8 @@ Cloud recognition meters the `IAudioSource` feeding the provider, so it works ev
 recognition depends on the platform: Apple taps the recognizer's own input node, Android reports the
 `SpeechRecognizer` RMS callback, while Windows' and the browser's recognizers own the mic and expose
 no level at all. Linux has no OS speech engine to wrap, so there is no native STT/TTS there at all —
-but every cloud provider works, and playback metering is supported because the Linux player decodes
-to PCM in managed code and sees every sample.
+but every cloud provider works, `Shiny.Speech.Linux.Whisper` covers offline recognition, and playback
+metering is supported because the Linux player decodes to PCM in managed code and sees every sample.
 
 On Apple platforms, native TTS routes `AVSpeechSynthesizer` through `AVAudioEngine` +
 `AVAudioPlayerNode` so audio levels can be tapped. The engine is created lazily on first speak and
@@ -465,7 +467,7 @@ builder.Services.AddCloudSpeechToText<MyCloudSttProvider>();
 | Android 26+ | SpeechRecognizer | Android TTS | AudioRecord | MediaPlayer |
 | Windows 10 19041+ | Windows.Media.SpeechRecognition | Windows.Media.SpeechSynthesis | AudioGraph | MediaPlayer |
 | Browser (WASM) | Web Speech API (`SpeechRecognition`) | Web Speech API (`SpeechSynthesis`) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` |
-| Linux (`Shiny.Audio.Linux`) | ❌ native — use a cloud provider | ❌ native — use a cloud provider | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | PulseAudio / PipeWire (`pa_simple`), ALSA fallback |
+| Linux (`Shiny.Audio.Linux`) | Whisper on-device (`Shiny.Speech.Linux.Whisper`) or any cloud provider | ❌ native — use a cloud provider | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | PulseAudio / PipeWire (`pa_simple`), ALSA fallback |
 
 ### Linux
 
@@ -489,7 +491,8 @@ builder.Services.AddCloudTextToSpeech<AzureTextToSpeechProvider>();
 **There is no native Linux STT/TTS** — Linux has no OS speech engine to wrap the way iOS, Android and
 Windows do, so `AddSpeechToText()` / `AddTextToSpeech()` register nothing there. Use any of the cloud
 providers (Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI); they are pure HTTP over the
-PCM stream and work unchanged once `AddLinuxAudio()` has supplied an `IAudioSource`.
+PCM stream and work unchanged once `AddLinuxAudio()` has supplied an `IAudioSource`. For recognition
+without a cloud account at all, see **Whisper on-device** below.
 
 Notes:
 
@@ -508,6 +511,74 @@ Notes:
 - `IAudioDevices.ShowOutputPicker()` is a no-op — Linux has no system route picker equivalent to
   iOS's `AVRoutePickerView`; routing lives in the desktop environment's sound settings. `Changed`
   fires on PulseAudio/PipeWire only (ALSA has no change notification).
+
+### Whisper on-device (Linux)
+
+**`Shiny.Speech.Linux.Whisper`** runs OpenAI's Whisper locally through
+[whisper.cpp](https://github.com/ggerganov/whisper.cpp) (via
+[Whisper.net](https://github.com/sandrohanea/whisper.net)) — the closest thing Linux has to the
+native recognizers iOS, Android and Windows ship with. No cloud account, no API key, no network at
+runtime, no per-minute billing.
+
+```csharp
+using Shiny;
+using Shiny.Speech.Linux;
+using Whisper.net.Ggml;
+
+builder.Services.AddLinuxAudio();               // must come first — supplies IAudioSource
+builder.Services.AddLinuxWhisperSpeechToText(GgmlType.BaseEn, QuantizationType.Q5_1);
+
+// or with full control:
+builder.Services.AddLinuxWhisperSpeechToText(new WhisperConfig
+{
+    ModelType = GgmlType.BaseEn,
+    Quantization = QuantizationType.Q5_1,
+    InitialPrompt = "Shiny, MAUI, Blazor",      // bias the decoder toward your vocabulary
+    SilenceRmsThreshold = 500                   // VAD sensitivity
+});
+```
+
+It registers a normal `ISpeechToTextService`, so `ListenUntilSilence()`, `StatementAfterKeyword()`
+and the rest of the extension methods work unchanged. Registration is a **no-op off Linux**, so it is
+safe to leave in shared startup code.
+
+The model is downloaded from Hugging Face on first use and cached in
+`~/.local/share/shiny.speech/whisper`. That first call costs a download plus several seconds of model
+load, so call `PrepareAsync()` at startup rather than making the user's first utterance pay for it:
+
+```csharp
+var provider = host.Services.GetRequiredService<ISpeechToTextProvider>();
+await ((WhisperSpeechToTextProvider)provider).PrepareAsync();
+```
+
+Notes:
+
+- **Speech-to-text only.** Whisper is a recognition model; there is no Whisper TTS. Pair it with a
+  cloud TTS provider, or skip TTS entirely.
+- **No partial results.** Whisper is a batch model with a 30-second window, not a streaming
+  recognizer. The provider runs client-side voice activity detection over the mic stream and turns
+  each speech→silence segment into one inference and one `IsFinal = true` result — the same shape as
+  the ElevenLabs Scribe provider. Tune with `SilenceRmsThreshold`, `MinUtteranceDurationMs` and
+  `MaxUtteranceDurationMs`.
+- **Model sizing.** `Tiny`/`Base` are the realistic choices on a Raspberry Pi 4/5 — expect roughly
+  realtime at `Base`, slower above `Small`. This suits push-to-talk and wake-word-then-command far
+  better than continuous dictation. On x64 desktops/servers, `Small` and up are comfortable. The
+  `*En` variants are meaningfully more accurate than the multilingual model of the same size when you
+  only need English.
+- **Platform support is all mainstream Linux, not just Pi** — `linux-x64`, `linux-arm64` and
+  `linux-arm` natives all ship. Requirements are `libstdc++6` and glibc 2.31+ (Debian 11+ / Ubuntu
+  20.04+ / Raspberry Pi OS Bullseye+). On **x86/x64 the CPU must support AVX, AVX2, FMA and F16C**;
+  older CPUs need an added `Whisper.net.Runtime.NoAvx` package reference. ARM has no such
+  requirement.
+- **Trim the natives on publish.** The bundled `Whisper.net.Runtime` carries binaries for every
+  platform it supports; publishing with an explicit RID (`dotnet publish -r linux-arm64`) copies only
+  the ones you need.
+- **GPU is opt-in.** Add `Whisper.net.Runtime.Cuda` (or `.Vulkan`) and set `UseGpu = true`; the CPU
+  runtime bundled here ignores the flag.
+- **Hallucination guards are on by default.** Whisper emits `[BLANK_AUDIO]` and `(wind blowing)`-style
+  annotations for silence and noise; `FilterNonSpeechAnnotations` strips them and drops results that
+  filter down to nothing. `CarryContextBetweenUtterances` is off so a bad transcription can't poison
+  everything after it.
 
 ### Browser (Blazor WebAssembly)
 

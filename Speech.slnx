@@ -33,6 +33,7 @@
         <Project Path="src/speech/Shiny.Speech.Azure/Shiny.Speech.Azure.csproj" />
         <Project Path="src/speech/Shiny.Speech.Cloud/Shiny.Speech.Cloud.csproj" />
         <Project Path="src/speech/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj" />
+        <Project Path="src/speech/Shiny.Speech.Linux.Whisper/Shiny.Speech.Linux.Whisper.csproj" />
         <Project Path="src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj" />
         <Project Path="src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
         <Project Path="src/speech/Shiny.Speech.Typecast/Shiny.Speech.Typecast.csproj" />

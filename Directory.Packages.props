@@ -22,6 +22,9 @@
         <PackageVersion Include="typecast-csharp" Version="0.3.7"/>
         <!-- Managed MP3 decoder for the Linux player: Linux has no system decoder to P/Invoke. -->
         <PackageVersion Include="NLayer" Version="2.0.1"/>
+        <!-- whisper.cpp bindings + CPU native runtime for on-device STT on Linux (incl. ARM/Pi). -->
+        <PackageVersion Include="Whisper.net" Version="1.9.1"/>
+        <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1"/>
     </ItemGroup>
     <ItemGroup>
         <PackageVersion Include="Shiny.Hosting.Maui" Version="5.2.3"/>

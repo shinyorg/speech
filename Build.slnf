@@ -11,6 +11,7 @@
             "src/speech/Shiny.Speech.Azure/Shiny.Speech.Azure.csproj",
             "src/speech/Shiny.Speech.ElevenLabs/Shiny.Speech.ElevenLabs.csproj",
             "src/speech/Shiny.Speech.Typecast/Shiny.Speech.Typecast.csproj",
+            "src/speech/Shiny.Speech.Linux.Whisper/Shiny.Speech.Linux.Whisper.csproj",
             "src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj",
             "src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj",
             "src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj",
