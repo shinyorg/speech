@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <UseMaui>true</UseMaui>
+        <IsAotCompatible>true</IsAotCompatible>
+        <Description>Shiny AI Conversation - a drop-in .NET MAUI chat control (AiChatView) wired to IAiConversationService</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <PackageReference Include="Microsoft.Maui.Controls"/>
+        <PackageReference Include="Shiny.Maui.Controls"/>
+    </ItemGroup>
+
+</Project>

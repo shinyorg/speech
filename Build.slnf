@@ -14,6 +14,7 @@
             "src/speech/Shiny.Speech.Linux.Whisper/Shiny.Speech.Linux.Whisper.csproj",
             "src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj",
             "src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj",
+            "src/aiconversation/Shiny.AiConversation.Maui/Shiny.AiConversation.Maui.csproj",
             "src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj",
             "src/aiconversation/Shiny.AiConversation.MessageStores.SqliteDocDb/Shiny.AiConversation.MessageStores.SqliteDocDb.csproj",
             "src/aiconversation/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj",

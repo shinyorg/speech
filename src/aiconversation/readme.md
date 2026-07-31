@@ -181,6 +181,31 @@ public class ChatViewModel(IAiConversationService aiService) : ObservableObject
 }
 ```
 
+## MAUI Chat UI
+
+`Shiny.AiConversation.Maui` ships `AiChatView` — a chat screen already wired to
+`IAiConversationService`. It derives from the [Shiny.Maui.Controls](https://shinylib.net/client/controls/)
+`ChatView`, so every style, template and behavior property of the base control still applies, while
+sends, AI replies, voice turns, the typing indicator and message-store history are handled for you.
+
+```bash
+dotnet add package Shiny.AiConversation.Maui
+```
+
+```xml
+<ContentPage xmlns:ai="http://shiny.net/maui/aiconversation">
+    <ai:AiChatView BotName="Aura"
+                   BotAvatar="bot.png"
+                   GreetingMessage="Hi! What can I help you with?"
+                   ShowMicrophoneAction="True"
+                   MyBubbleColor="{StaticResource Primary}"
+                   OtherBubbleColor="#F0EEFF"
+                   BubbleCornerRadius="16" />
+</ContentPage>
+```
+
+See the [documentation](https://shinylib.net/aiconversation/chat-view) for the full property list.
+
 ## API Overview
 
 ### IAiConversationService
