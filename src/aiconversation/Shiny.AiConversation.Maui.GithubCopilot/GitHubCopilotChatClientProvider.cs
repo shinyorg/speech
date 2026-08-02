@@ -41,6 +41,13 @@ public class GitHubCopilotChatClientProvider : IChatClientProvider
 
     public bool IsAuthenticated => SecureStorage.Default.GetAsync(TokenStorageKey).GetAwaiter().GetResult() != null;
 
+    /// <summary>
+    /// The Copilot proxy passes json_schema support through per-model and rejects it on several, so the
+    /// safe default here is a plain JSON response format with the shape described in the prompt. Set this
+    /// to <see cref="AiStructuredOutputMode.JsonSchema"/> when your model is known to support it.
+    /// </summary>
+    public AiStructuredOutputMode StructuredOutputMode { get; set; } = AiStructuredOutputMode.Json;
+
     public async Task<IChatClient> GetChatClient(CancellationToken cancelToken = default)
     {
         var githubToken = await SecureStorage.Default.GetAsync(TokenStorageKey).ConfigureAwait(false);

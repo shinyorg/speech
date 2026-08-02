@@ -21,4 +21,10 @@ public interface IAudio
 
     /// <summary>Audio input/output route enumeration and selection. iOS/Mac Catalyst and Android only.</summary>
     IAudioDevices Devices { get; }
+
+    /// <summary>
+    /// Record the microphone to a WAV file, optionally through a live effect chain. Transient —
+    /// each access yields a fresh recorder, so resolve it once per recording.
+    /// </summary>
+    IAudioRecorder Recorder { get; }
 }

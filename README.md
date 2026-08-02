@@ -3,7 +3,7 @@
 This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
-- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering, plus a live mic-to-output **monitor** (`IAudioMonitor`) and audio **route enumeration/selection** (`IAudioDevices`), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
+- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), and real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
@@ -12,7 +12,7 @@ All packages share a single version, defined by `version.json` at the repo root 
 
 | Package | Description | Targets |
 |---------|-------------|---------|
-| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) + WAV recording (`IAudioRecorder`) + real-time capture effects (`AudioEffectChain`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Audio.Linux** | Linux backend for all four audio services over PulseAudio/PipeWire with an ALSA fallback. Ships separately because it carries a managed MP3 decoder (`NLayer`) — Linux has no system decoder to call | net10.0 |
 | **Shiny.Speech** | Core STT/TTS interfaces + native platform implementations (references Shiny.Audio for capture/playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
@@ -53,8 +53,8 @@ builder.Services.AddSpeechServices();
 > change; add `using Shiny;` only where you reference it outside those namespaces. `IAudioSource`,
 > `IAudioPlayer`, and `PipeStream` remain in `Shiny.Audio` — add `using Shiny.Audio;` where you consume
 > them. `AddSpeechServices()` still wires up capture + playback; to register audio on its own — including
-> the live monitor (`IAudioMonitor`), route enumeration (`IAudioDevices`), and the `IAudio` facade — call
-> `builder.Services.AddAudioServices();`.
+> the live monitor (`IAudioMonitor`), route enumeration (`IAudioDevices`), recording (`IAudioRecorder`),
+> and the `IAudio` facade — call `builder.Services.AddAudioServices();`.
 
 ### Azure AI Speech (Cloud)
 
@@ -239,6 +239,106 @@ of any per-request TTS volume. On iOS / Mac Catalyst there is no supported OS AP
 volume, so the setter throws — let the user adjust it via the hardware buttons or an `MPVolumeView`.
 Browsers sandbox the OS volume, so there `Volume` is the app's own media-element volume (settable, and
 it persists across plays).
+
+### Capture Effects & Recording
+
+`Shiny.Audio` can apply real-time DSP to the microphone and record the result to a WAV file. Effects
+are pure managed code running on the normalized 16 kHz mono PCM every platform already produces, so
+they behave identically on iOS, Android, Windows, Linux and the browser — including pitch shift,
+which no platform offers natively on capture.
+
+#### Controlling effects live
+
+An effect is an object you own. Build a chain, hand it to the session, then keep the reference and
+mutate it — every change is picked up on the next audio buffer.
+
+```csharp
+using Shiny.Audio;
+
+var chain = new AudioEffectChain();
+var pitch = chain.Add(new PitchShiftEffect { Semitones = 0 });
+var echo  = chain.Add(new EchoEffect { DelayMs = 250, Mix = 0.35f, Enabled = false });
+
+var stream = await audio.Source.StartCaptureAsync(new AudioCaptureOptions { Effects = chain });
+
+// ...all of this applies mid-capture, from any thread:
+pitch.Semitones = 5;        // change a value
+echo.Enabled = true;        // switch one effect on
+chain.Enabled = false;      // master bypass
+```
+
+There are three levels of on/off — `chain.Enabled`, `effect.Enabled`, and each effect's `Mix` — and
+every numeric parameter is live-settable. Parameters are ramped and bypass is crossfaded, so moving a
+slider or flipping a switch during a take doesn't click.
+
+| Effect | Key parameters |
+| --- | --- |
+| `GainEffect` | `Gain`, `GainDb` |
+| `NoiseGateEffect` | `ThresholdDb`, `AttackMs`, `ReleaseMs` |
+| `BiquadFilterEffect` | `Type` (LowPass/HighPass/BandPass/Notch), `Frequency`, `Q` |
+| `DistortionEffect` | `Drive`, `Mix` |
+| `RingModEffect` | `Frequency`, `Mix` — the robot voice |
+| `EchoEffect` | `DelayMs`, `Feedback`, `Mix` |
+| `ChorusEffect` | `RateHz`, `DepthMs`, `Mix`, `Feedback` |
+| `ReverbEffect` | `RoomSize`, `Damping`, `Mix` |
+| `PitchShiftEffect` | `Semitones` (±24) |
+
+`AudioEffectPresets.Create(AudioEffectPreset.Robot)` builds ready-made chains — `Robot`, `Chipmunk`,
+`DeepVoice`, `Cathedral`, `Telephone`, `Megaphone`, `Ensemble` — which are ordinary chains you can
+keep adjusting.
+
+> **Never put effects on audio bound for speech recognition.** Pitch, reverb and the rest destroy
+> recognition and wake-word accuracy. This is the same hazard `AudioProcessingOptions.Analysis`
+> warns about, one step worse.
+
+#### Recording
+
+`IAudioRecorder` owns the capture session and the drain loop, and writes 16 kHz mono PCM16 WAV.
+
+```csharp
+var recorder = audio.Recorder;
+if (await recorder.RequestAccess() != AccessState.Available)
+    return;
+
+recorder.InputLevelChanged += (_, level) => { /* meter reflects the recorded signal */ };
+
+await recorder.StartAsync(new AudioRecordingOptions
+{
+    Path = null,                    // null → timestamped file under the app's local data dir
+    Mode = AudioRecordMode.Both,    // Wet (default) | Dry | Both
+    Effects = chain
+});
+
+// ... adjust the chain live while it records ...
+
+var recording = await recorder.StopAsync();   // null if nothing was captured
+Console.WriteLine($"{recording!.Duration} → {recording.Path} (dry: {recording.DryPath})");
+```
+
+`Mode` decides what is written: `Wet` is the processed take, `Dry` is the untouched microphone, and
+`Both` writes two files so you can compare them. Recording always captures dry from the source and
+applies the chain in the recorder's own loop — which is what makes `Both` possible without splitting
+the capture stream.
+
+Because `Dry` keeps the clean take, you can re-render it later with different settings instead of
+asking anyone to perform it again:
+
+```csharp
+AudioEffectProcessor.ProcessFile(recording.DryPath!, "take-cathedral.wav",
+    AudioEffectPresets.Create(AudioEffectPreset.Cathedral));
+```
+
+`WavWriter` and `WavReader` are public if you want to stream PCM to and from WAV yourself.
+
+> **Format:** WAV/PCM16 only. AAC/MP3 would need a native encoder per platform (and Linux has none),
+> so it is deliberately out of scope.
+
+#### Latency and cost
+
+Everything except pitch shift is cheap enough to be irrelevant at 16 kHz mono — fine on a Raspberry
+Pi. `PitchShiftEffect` adds up to one window (~50 ms) of latency, and beyond roughly ±7 semitones a
+voice starts to sound obviously processed. Reverb and pitch on a narrowband mono mic sound thinner
+than they would on full-bandwidth stereo: these are voice effects, not mastering tools.
 
 ### Microphone Monitor & Routes (`IAudio`)
 
@@ -628,7 +728,9 @@ A centralized AI service library for .NET MAUI apps that orchestrates chat, spee
 - **Voice Selection Tools** — Optional `AddVoiceSelectionTools()` lets the AI list voices, play samples, and switch its own TTS voice mid-conversation
 - **State Management** — Observable `AiState` (Idle / Listening / Thinking / Responding) with events
 - **Sound Effects** — Configurable sound stream factories for each state transition
-- **Conversation Continuation** — AI responses ending with a question automatically keep the microphone open for a reply
+- **Structured Turns** — The AI answers with a typed `AiTurn` (`Reply` + `Questions`), so "I need something back from you" is a real signal rather than a guess at the wording. Falls back to plain text automatically on any provider or model that can't produce it
+- **Conversation Continuation** — When a turn carries questions the microphone stays open for the answer, with a `FollowUpTimeout` that hands control back to the wake word if nobody replies
+- **Multiple Choice** — Questions can carry a fixed set of `AiChoice` answers, rendered as tappable buttons by `AiChatView`
 - **Voice Interruption** — Configurable quiet words (e.g., "stop", "cancel") via `AiContext.QuietWords` immediately silence TTS and break the loop; any other speech during TTS interrupts and continues with the new utterance
 
 ## Quick Start
@@ -714,6 +816,7 @@ What it wires for you:
 - **History** — the chat is backfilled from the registered `IMessageStore` and pages further back on scroll-to-top. No message store registered? The chat simply starts empty and stays live-only
 - **Typing indicator** — driven by `AiState` (`Thinking` / `Responding`), with a heartbeat so long turns keep the bubble alive
 - **Errors** — failures from `TalkTo` and the service's `ErrorOccurred` event render as AI bubbles (`Identifier = "error"`)
+- **Choice buttons** — turns carrying `AiChoice` options render as tappable chips under the bubble; the tapped label is sent as the user's answer. Multi-select questions collect picks and commit with a send chip. Setting your own `MessageTemplate` / `MessageTemplateSelector` takes precedence — read the choices off `ChatMessage.Metadata` with `AiChoiceTemplateSelector.ReadQuestions`
 
 ### AiChatView properties
 
@@ -729,6 +832,8 @@ What it wires for you:
 | `ShowTokenUsage` | `false` | Appends a token usage footer to AI messages when the provider reports usage |
 | `ShowMicrophoneAction` | `false` | Adds a push-to-talk action to the input bar (invoke again to cancel) |
 | `MicrophoneActionText` | `🎤 Voice Input` | Label of that action |
+| `ShowChoiceButtons` | `true` | Renders a button per `AiChoice` under AI bubbles that ask a multiple-choice question; tapping one sends its label as the answer |
+| `ChoiceSendText` | `Send` | Label of the commit button shown for questions that allow more than one choice |
 | `Refresh()` | — | Method — reloads the conversation (use after `ClearChatHistory`) |
 
 Everything else — `MyBubbleColor`, `OtherTextColor`, `ChatBackgroundColor`, `BubbleFontSize`,
@@ -749,6 +854,65 @@ builder.Services.AddShinyAiConversation(opts =>
 });
 ```
 
+## Structured turns, questions & choices
+
+`IChatClient` has no way to say "that was a question, keep listening" — `ChatFinishReason` is only
+`Stop` / `Length` / `ToolCalls` / `ContentFilter`. So the service asks the model for a structured turn
+instead and reads the signal off the shape:
+
+```csharp
+public record AiTurn(string Reply, AiQuestion[]? Questions);
+public record AiQuestion(string Id, string Text, AiChoice[]? Choices, bool AllowMultiple);
+public record AiChoice(string Id, string Label);
+```
+
+**`Reply` is what the user sees and hears. `Questions` drives the interface.** The model still phrases
+the question naturally inside `Reply` — nothing reads the structured question text aloud.
+
+```csharp
+aiService.AiResponded += response =>
+{
+    var text = response.Text;                 // the parsed reply, never the raw JSON
+    if (response.ExpectsResponse)             // typed - no punctuation sniffing
+    {
+        foreach (var q in response.Questions)
+            Console.WriteLine($"{q.Text}: {String.Join(", ", q.Choices?.Select(c => c.Label) ?? [])}");
+    }
+};
+```
+
+`IAiConversationService.PendingQuestions` holds the current queue. **Each turn replaces it** — the model
+is the source of truth for what it still needs, so anything it stops asking about is treated as answered.
+An answer is sent back as plain text and resolved by the model in context; nothing is matched locally.
+
+### Provider support
+
+Endpoints differ in what they'll accept, so `IChatClientProvider.StructuredOutputMode` declares the best
+mode for each one:
+
+| Mode | Request | Use for |
+|------|---------|---------|
+| `JsonSchema` *(default)* | Native schema-constrained response | OpenAI and compatible endpoints |
+| `Json` | JSON response format + shape in the prompt | GitHub Copilot and models without schema support |
+| `Prompt` | Shape in the prompt only, no format constraint | Endpoints that reject both of the above |
+| `None` | Plain text | Opting out — falls back to the wording heuristic |
+
+Parsing is forgiving (markdown fences and surrounding prose are tolerated), and **any failure degrades
+to plain text** rather than erroring: `AiResponse.Turn` is null, `AiResponse.Text` is the raw reply, and
+`ExpectsResponse` falls back to checking whether the reply ends in a question. Override the provider's
+choice with `IAiConversationService.StructuredOutputMode`, or opt out entirely with `None`.
+
+### The follow-up window
+
+When a turn carries questions the microphone stays open for the answer without needing the wake word
+again. `FollowUpTimeout` (default 20 seconds, null to wait indefinitely) bounds that: if nobody answers,
+the queue is cleared and the conversation goes back to requiring the wake word — otherwise an abandoned
+question leaves the mic hot and the next unrelated thing said in the room becomes the answer.
+
+When the reply is being spoken aloud (`Acknowledgement` above `AudioBlip`) the model is instructed to ask
+**at most one question per turn**; in text mode it may ask several. Three questions in one breath works
+as chips and is unusable as audio.
+
 ## API Overview
 
 ### IAiConversationService
@@ -760,9 +924,12 @@ builder.Services.AddShinyAiConversation(opts =>
 | `ListenAndTalk(CancellationToken)` | Capture speech via microphone and send to AI |
 | `StartWakeWord(string)` / `StopWakeWord()` | Begin / stop continuous wake word detection |
 | `GetChatHistory(...)` / `ClearChatHistory(...)` | Query / clear persisted chat history |
-| `ClearCurrentChat()` | Clear in-memory session messages |
+| `ClearCurrentChat()` | Clear in-memory session messages (also clears `PendingQuestions`) |
 | `Status` | Current `AiState` (Idle / Listening / Thinking / Responding) |
 | `Acknowledgement` | Get/set the response delivery mode |
+| `PendingQuestions` | The questions the AI is waiting on, from the most recent turn (replaced each turn) |
+| `FollowUpTimeout` | How long to keep listening for an answer before returning to the wake word (default 20s, null waits forever) |
+| `StructuredOutputMode` | Overrides the provider's `AiStructuredOutputMode`; null uses the provider's own |
 | `StatusChanged` / `AiResponded` | Events for state changes and completed responses |
 
 ### Acknowledgement Modes

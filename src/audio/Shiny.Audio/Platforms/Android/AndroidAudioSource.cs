@@ -10,7 +10,7 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
 {
     AudioRecord? audioRecord;
     CancellationTokenSource? recordingCts;
-    PipeStream? pipe;
+    CaptureSink? sink;
     AcousticEchoCanceler? echoCanceler;
     NoiseSuppressor? noiseSuppressor;
     AutomaticGainControl? gainControl;
@@ -20,8 +20,11 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
     public Task<AccessState> RequestAccess()
         => platform.RequestAccess(Manifest.Permission.RecordAudio);
 
-    public Task<System.IO.Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+    public Task<System.IO.Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        var processing = options.Processing;
+
         const int sampleRate = 16000;
         const ChannelIn channelConfig = ChannelIn.Mono;
         const Encoding audioFormat = Encoding.Pcm16bit;
@@ -54,7 +57,7 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
         if (processing?.AnyEnabled == true)
             this.AttachAudioEffects(audioRecord.AudioSessionId, processing);
 
-        pipe = new PipeStream();
+        sink = new CaptureSink(options, level => InputLevelChanged?.Invoke(this, level), sampleRate);
         recordingCts = new CancellationTokenSource();
         audioRecord.StartRecording();
 
@@ -62,9 +65,7 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
         // loop, so reading them per-iteration would NRE on the last buffer in flight.
         var token = recordingCts.Token;
         var record = audioRecord;
-        var sink = pipe;
-
-        var throttle = new AudioLevelThrottle();
+        var target = sink;
 
         _ = Task.Run(() =>
         {
@@ -72,30 +73,13 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
             while (!token.IsCancellationRequested)
             {
                 var bytesRead = record.Read(buffer, 0, buffer.Length);
-                if (bytesRead > 0)
-                {
-                    if (throttle.TryEmit(AudioLevel.FromPcm16(buffer.AsSpan(0, bytesRead)), out var level))
-                        InputLevelChanged?.Invoke(this, level);
-
-                    try
-                    {
-                        sink.Write(buffer, 0, bytesRead);
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        break;
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        // pipe writer was completed by Dispose on the Stop path
-                        break;
-                    }
-                }
+                if (bytesRead > 0 && !target.Write(buffer, 0, bytesRead))
+                    break;   // consumer went away
             }
         }, token);
 
         logger.LogDebug("Android audio capture started");
-        return Task.FromResult<System.IO.Stream>(pipe);
+        return Task.FromResult<System.IO.Stream>(sink.Stream);
     }
 
     // Each effect attaches to the AudioRecord's audio session and is best-effort: a device
@@ -156,8 +140,8 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
             audioRecord = null;
         }
 
-        pipe?.Dispose();
-        pipe = null;
+        sink?.Dispose();
+        sink = null;
 
         logger.LogDebug("Android audio capture stopped");
         return Task.CompletedTask;

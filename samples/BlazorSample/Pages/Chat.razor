@@ -100,7 +100,7 @@
 
     void OnAiResponded(AiResponse response)
     {
-        if (response.Response.Text is { } text)
+        if (response.Text is { } text)
         {
             InvokeAsync(() =>
             {

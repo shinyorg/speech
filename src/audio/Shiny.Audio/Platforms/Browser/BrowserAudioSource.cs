@@ -7,22 +7,23 @@ namespace Shiny.Audio;
 [SupportedOSPlatform("browser")]
 public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IAudioSource
 {
-    static PipeStream? activePipe;
-    // The JS interop callbacks are static, so the capturing instance (and its throttle) has to be
-    // reachable statically to raise the level event. Capture is single-session per app anyway.
+    // The JS interop callbacks are static, so the capturing session has to be reachable statically
+    // to process buffers and raise the level event. Capture is single-session per app anyway.
+    static CaptureSink? activeSink;
     static BrowserAudioSource? activeSource;
-    static AudioLevelThrottle? levelThrottle;
 
     public event EventHandler<double>? InputLevelChanged;
 
-    public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+    public async Task<Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
         await BrowserJsModule.ImportAsync();
 
-        var pipe = new PipeStream();
-        activePipe = pipe;
+        var processing = options.Processing;
         activeSource = this;
-        levelThrottle = new AudioLevelThrottle();
+
+        var sink = new CaptureSink(options, level => activeSource?.InputLevelChanged?.Invoke(activeSource, level));
+        activeSink = sink;
 
         await StartMicrophoneCaptureAsync(
             processing?.EchoCancellation ?? false,
@@ -31,15 +32,14 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
         );
         logger.LogDebug("Browser audio capture started");
 
-        return pipe;
+        return sink.Stream;
     }
 
     public Task StopCaptureAsync()
     {
         StopMicrophoneCapture();
-        activePipe?.Dispose();
-        activePipe = null;
-        levelThrottle = null;
+        activeSink?.Dispose();
+        activeSink = null;
         if (ReferenceEquals(activeSource, this))
             activeSource = null;
         logger.LogDebug("Browser audio capture stopped");
@@ -64,27 +64,13 @@ public partial class BrowserAudioSource(ILogger<BrowserAudioSource> logger) : IA
 
     [JSExport]
     public static void OnAudioData(byte[] pcmData)
-    {
-        var source = activeSource;
-        var throttle = levelThrottle;
-        if (source != null && throttle != null && throttle.TryEmit(AudioLevel.FromPcm16(pcmData), out var level))
-            source.InputLevelChanged?.Invoke(source, level);
-
-        try
-        {
-            activePipe?.Write(pcmData, 0, pcmData.Length);
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-    }
+        => activeSink?.Write(pcmData, 0, pcmData.Length);
 
     [JSExport]
     public static void OnCaptureError(string error)
     {
-        activePipe?.Dispose();
-        activePipe = null;
+        activeSink?.Dispose();
+        activeSink = null;
         activeSource = null;
-        levelThrottle = null;
     }
 }

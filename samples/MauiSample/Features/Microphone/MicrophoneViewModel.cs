@@ -23,6 +23,13 @@ public partial class MicrophoneViewModel : ObservableObject
         monitor.InputLevelChanged += OnLevel;
         devices.Changed += OnDevicesChanged;
 
+        // Add returns the instance, so each effect stays addressable for the live controls below.
+        // They start disabled — toggling one crossfades it in rather than clicking.
+        pitch = effects.Add(new PitchShiftEffect { Enabled = false });
+        echo = effects.Add(new EchoEffect { Enabled = false });
+        reverb = effects.Add(new ReverbEffect { Enabled = false });
+        robot = effects.Add(new RingModEffect { Enabled = false });
+
         RefreshRoutes();
     }
 
@@ -111,6 +118,9 @@ public partial class MicrophoneViewModel : ObservableObject
             IsMonitoring = false;
             Level = 0;
         }
+
+        if (IsRecording)
+            await StopRecording();
     }
 
     // ── Current routes (display only — see notes below) ───────────────────────────────
@@ -147,28 +157,99 @@ public partial class MicrophoneViewModel : ObservableObject
         return $"{d.Name} · {kind}";
     }
 
+    // ── Effects (live DSP applied to capture — drive these while recording) ──────────
+
+    // One chain, built once and kept for the lifetime of the page. Every control below mutates an
+    // effect object directly: the audio thread picks the change up on the next buffer, so there is
+    // nothing to "apply" and no need to restart the recording.
+    readonly AudioEffectChain effects = new();
+    readonly PitchShiftEffect pitch;
+    readonly EchoEffect echo;
+    readonly ReverbEffect reverb;
+    readonly RingModEffect robot;
+
+    [ObservableProperty]
+    bool effectsEnabled = true;
+
+    [ObservableProperty]
+    double pitchSemitones;
+
+    [ObservableProperty]
+    bool pitchEnabled;
+
+    [ObservableProperty]
+    bool echoEnabled;
+
+    [ObservableProperty]
+    double echoDelayMs = 250;
+
+    [ObservableProperty]
+    double echoMix = 0.35;
+
+    [ObservableProperty]
+    bool reverbEnabled;
+
+    [ObservableProperty]
+    double reverbRoomSize = 0.6;
+
+    [ObservableProperty]
+    double reverbMix = 0.35;
+
+    [ObservableProperty]
+    bool robotEnabled;
+
+    [ObservableProperty]
+    double robotFrequency = 45;
+
+    partial void OnEffectsEnabledChanged(bool value) => effects.Enabled = value;
+
+    partial void OnPitchEnabledChanged(bool value) => pitch.Enabled = value;
+    partial void OnPitchSemitonesChanged(double value) => pitch.Semitones = (float)value;
+
+    partial void OnEchoEnabledChanged(bool value) => echo.Enabled = value;
+    partial void OnEchoDelayMsChanged(double value) => echo.DelayMs = (float)value;
+    partial void OnEchoMixChanged(double value) => echo.Mix = (float)value;
+
+    partial void OnReverbEnabledChanged(bool value) => reverb.Enabled = value;
+    partial void OnReverbRoomSizeChanged(double value) => reverb.RoomSize = (float)value;
+    partial void OnReverbMixChanged(double value) => reverb.Mix = (float)value;
+
+    partial void OnRobotEnabledChanged(bool value) => robot.Enabled = value;
+    partial void OnRobotFrequencyChanged(double value) => robot.Frequency = (float)value;
+
     // ── Record & Play (record with the mic, then play the clip back) ──────────────────
 
-    IAudioSource? captureSource;
-    MemoryStream? captureBuffer;
-    CancellationTokenSource? captureCts;
-    Task? drainTask;
-    byte[]? lastRecording;
+    IAudioRecorder? recorder;
+    AudioRecording? lastRecording;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RecordButtonText))]
     [NotifyPropertyChangedFor(nameof(CanPlay))]
+    [NotifyPropertyChangedFor(nameof(CanPlayDry))]
+    [NotifyPropertyChangedFor(nameof(CanChangeRecordMode))]
     bool isRecording;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanPlay))]
+    [NotifyPropertyChangedFor(nameof(CanPlayDry))]
     bool hasRecording;
 
     [ObservableProperty]
     string recordStatus = "Record a clip, then play it back through the current output.";
 
+    /// <summary>Wet (processed), Dry (raw mic), or Both — two files, so the takes can be compared.</summary>
+    public IReadOnlyList<string> RecordModes { get; } = ["Wet", "Dry", "Both"];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPlayDry))]
+    string selectedRecordMode = "Wet";
+
     public string RecordButtonText => IsRecording ? "■  Stop" : "⏺  Record";
     public bool CanPlay => HasRecording && !IsRecording;
+    public bool CanPlayDry => CanPlay && lastRecording?.DryPath != null;
+
+    // The mode is fixed for the duration of a take — it decides which files get opened at Start.
+    public bool CanChangeRecordMode => !IsRecording;
 
     [RelayCommand]
     async Task ToggleRecord()
@@ -185,77 +266,85 @@ public partial class MicrophoneViewModel : ObservableObject
             IsMonitoring = false;
         }
 
-        if (await monitor.RequestAccess() != AccessState.Available)
+        recorder = audio.Recorder;
+
+        if (await recorder.RequestAccess() != AccessState.Available)
         {
             RecordStatus = "Microphone access denied.";
             return;
         }
 
-        captureSource = audio.Source;
-        captureBuffer = new MemoryStream();
-        captureCts = new CancellationTokenSource();
+        recorder.InputLevelChanged += OnLevel;
 
-        var stream = await captureSource.StartCaptureAsync(cancellationToken: captureCts.Token);
-        drainTask = DrainAsync(stream, captureBuffer, captureCts.Token);
+        var mode = SelectedRecordMode switch
+        {
+            "Dry" => AudioRecordMode.Dry,
+            "Both" => AudioRecordMode.Both,
+            _ => AudioRecordMode.Wet
+        };
+
+        try
+        {
+            await recorder.StartAsync(new AudioRecordingOptions
+            {
+                Mode = mode,
+                Effects = effects
+            });
+        }
+        catch (Exception ex)
+        {
+            recorder.InputLevelChanged -= OnLevel;
+            RecordStatus = $"Error: {ex.Message}";
+            return;
+        }
 
         HasRecording = false;
         IsRecording = true;
-        RecordStatus = "Recording… tap Stop when done.";
-    }
-
-    async Task DrainAsync(Stream stream, MemoryStream target, CancellationToken ct)
-    {
-        var buffer = new byte[4096];
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var read = await stream.ReadAsync(buffer, ct);
-                if (read == 0)
-                    break;
-                target.Write(buffer, 0, read);
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception) { }
+        RecordStatus = "Recording… change the effects below while it runs.";
     }
 
     async Task StopRecording()
     {
         IsRecording = false;
-        captureCts?.Cancel();
 
-        try { if (captureSource != null) await captureSource.StopCaptureAsync(); } catch { }
-        if (drainTask != null) { try { await drainTask; } catch { } }
+        if (recorder == null)
+            return;
 
-        var pcm = captureBuffer?.ToArray() ?? [];
-        if (captureSource != null) { await captureSource.DisposeAsync(); captureSource = null; }
-        captureBuffer?.Dispose();
-        captureBuffer = null;
+        recorder.InputLevelChanged -= OnLevel;
+        lastRecording = await recorder.StopAsync();
 
-        if (pcm.Length == 0)
+        await recorder.DisposeAsync();
+        recorder = null;
+        Level = 0;
+
+        if (lastRecording == null)
         {
             RecordStatus = "Nothing was recorded.";
             return;
         }
 
-        lastRecording = WavFromPcm16(pcm);
         HasRecording = true;
-        var secs = pcm.Length / (16000 * 2.0);
-        RecordStatus = $"Recorded {secs:0.0}s. Tap Play.";
+        RecordStatus = lastRecording.DryPath == null
+            ? $"Recorded {lastRecording.Duration.TotalSeconds:0.0}s. Tap Play."
+            : $"Recorded {lastRecording.Duration.TotalSeconds:0.0}s — wet and dry. Play either.";
     }
 
     [RelayCommand]
-    async Task Play()
+    Task Play() => PlayFile(lastRecording?.Path);
+
+    [RelayCommand]
+    Task PlayDry() => PlayFile(lastRecording?.DryPath);
+
+    async Task PlayFile(string? path)
     {
-        if (lastRecording == null)
+        if (path == null)
             return;
 
         try
         {
             // Playback runs in a Playback session and follows the current output route
             // (built-in / Bluetooth / wired).
-            await audio.Player.PlayAsync(new MemoryStream(lastRecording));
+            await audio.Player.PlayAsync(path);
         }
         catch (Exception ex)
         {
@@ -265,31 +354,6 @@ public partial class MicrophoneViewModel : ObservableObject
 
         RefreshRoutes();   // CurrentOutput now reflects where the clip actually played
         RecordStatus = $"Played to {CurrentOutputText}.";
-    }
-
-    // Wrap raw capture PCM (16 kHz / 16-bit / mono — the IAudioSource contract) in a WAV header so
-    // IAudioPlayer can play it.
-    static byte[] WavFromPcm16(byte[] pcm, int sampleRate = 16000, short channels = 1)
-    {
-        const short bitsPerSample = 16;
-        var byteRate = sampleRate * channels * bitsPerSample / 8;
-        var buffer = new byte[44 + pcm.Length];
-        var w = new BinaryWriter(new MemoryStream(buffer));
-        w.Write("RIFF"u8.ToArray());
-        w.Write(36 + pcm.Length);
-        w.Write("WAVE"u8.ToArray());
-        w.Write("fmt "u8.ToArray());
-        w.Write(16);
-        w.Write((short)1);                                   // PCM
-        w.Write(channels);
-        w.Write(sampleRate);
-        w.Write(byteRate);
-        w.Write((short)(channels * bitsPerSample / 8));      // block align
-        w.Write(bitsPerSample);
-        w.Write("data"u8.ToArray());
-        w.Write(pcm.Length);
-        w.Write(pcm);
-        return buffer;
     }
 
     void OnLevel(object? sender, double value)

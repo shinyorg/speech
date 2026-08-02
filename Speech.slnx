@@ -46,6 +46,7 @@
         <File Path="src/audio/readme.md" />
         <Project Path="src/audio/Shiny.Audio/Shiny.Audio.csproj" />
         <Project Path="src/audio/Shiny.Audio.Linux/Shiny.Audio.Linux.csproj" />
+        <Project Path="src/audio/tests/Shiny.Audio.Tests/Shiny.Audio.Tests.csproj" />
     </Folder>
     <Folder Name="/AiConversation/">
         <File Path="src/aiconversation/Directory.Build.props" />

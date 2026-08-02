@@ -31,6 +31,13 @@ public class GithubCopilotStaticChatProvider(
     DateTimeOffset copilotTokenExpiry = DateTimeOffset.MinValue;
     IChatClient? cachedClient;
 
+    /// <summary>
+    /// The Copilot proxy passes json_schema support through per-model and rejects it on several, so the
+    /// safe default here is a plain JSON response format with the shape described in the prompt. Set this
+    /// to <see cref="AiStructuredOutputMode.JsonSchema"/> when your model is known to support it.
+    /// </summary>
+    public AiStructuredOutputMode StructuredOutputMode { get; set; } = AiStructuredOutputMode.Json;
+
     public async Task<IChatClient> GetChatClient(CancellationToken cancelToken = default)
     {
         if (this.cachedClient != null && DateTimeOffset.UtcNow.AddSeconds(60) < this.copilotTokenExpiry)

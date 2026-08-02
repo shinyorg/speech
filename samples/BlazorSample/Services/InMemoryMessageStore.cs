@@ -8,9 +8,10 @@ public class InMemoryMessageStore : IMessageStore
     readonly List<AiChatMessage> messages = [];
     readonly object sync = new();
 
-    public Task Store(string? userTriggeringMessage, ChatResponse response, CancellationToken cancellationToken)
+    public Task Store(string? userTriggeringMessage, string? assistantMessage, ChatResponse response, CancellationToken cancellationToken)
     {
-        if (response.Text is not { } text)
+        // assistantMessage, not response.Text - the latter is the raw structured turn envelope
+        if (assistantMessage is not { } text)
             return Task.CompletedTask;
 
         lock (sync)

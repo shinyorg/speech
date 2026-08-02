@@ -16,9 +16,17 @@ public class AiChatSessionProvider(IAiConversationService aiService, AiChatSetti
     /// <summary>The bot identity / history settings applied to every session this provider hands out.</summary>
     public AiChatSettings Settings => settings;
 
+    /// <summary>
+    /// The most recently handed out session. Choice buttons route their answer through this so the
+    /// tapped label lands in the same conversation the bubble came from.
+    /// </summary>
+    internal AiChatSession? Current { get; private set; }
+
     public Task<IChatSession> CreateSessionAsync(string[] userIds, CancellationToken cancellationToken = default)
-        => Task.FromResult<IChatSession>(new AiChatSession(aiService, settings));
+        => Task.FromResult<IChatSession>(this.Track());
 
     public Task<IChatSession> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
-        => Task.FromResult<IChatSession>(new AiChatSession(aiService, settings));
+        => Task.FromResult<IChatSession>(this.Track());
+
+    AiChatSession Track() => this.Current = new AiChatSession(aiService, settings);
 }

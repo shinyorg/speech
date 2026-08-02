@@ -29,8 +29,17 @@ public class AiConversationService(
     bool sessionStarted;
     bool lastResponseExpectedReply;
     long suppressResultsUntilTicks;
+    AiQuestion[] pendingQuestions = [];
 
     static readonly TimeSpan TtsEchoSettleWindow = TimeSpan.FromMilliseconds(750);
+
+    // Used only by AiStructuredOutputMode.Prompt, where nothing on the request constrains the format.
+    const string AiTurnSchemaPrompt =
+        """
+        Respond with only a JSON object in exactly this shape, with no surrounding text or markdown:
+        {"reply":"string","questions":[{"id":"string","text":"string","choices":[{"id":"string","label":"string"}],"allowMultiple":false}]}
+        'questions' and 'choices' may be omitted or empty.
+        """;
 
     public event Action<AiState>? StatusChanged;
     public event Action<AiResponse>? AiResponded;
@@ -46,6 +55,9 @@ public class AiConversationService(
     public AiState Status { get; private set; }
     public AiAcknowledgement Acknowledgement { get; set; } = AiAcknowledgement.Full;
     public float InterruptionMinConfidence { get; set; } = 0.5f;
+    public TimeSpan? FollowUpTimeout { get; set; } = TimeSpan.FromSeconds(20);
+    public AiStructuredOutputMode? StructuredOutputMode { get; set; }
+    public IReadOnlyList<AiQuestion> PendingQuestions => this.pendingQuestions;
 
     List<ChatMessage> currentMessages = [];
     public IReadOnlyList<ChatMessage> CurrentChatMessages => currentMessages.AsReadOnly();
@@ -53,6 +65,7 @@ public class AiConversationService(
     public void ClearCurrentChat()
     {
         this.currentMessages.Clear();
+        this.ClearPendingQuestions();
     }
 
     public async Task StartWakeWord(string wakeWord)
@@ -93,20 +106,33 @@ public class AiConversationService(
         try
         {
             var continueListening = true;
+            var isFollowUp = false;
             while (continueListening && !ct.IsCancellationRequested)
             {
                 this.lastResponseExpectedReply = false;
                 this.SetStatus(AiState.Listening);
                 await this.SafePlay(AiAction.Ok).ConfigureAwait(false);
 
-                logger?.LogDebug("Listening for utterance");
-                var utterance = await this.ReadNextUtteranceAsync(ct).ConfigureAwait(false);
+                // The first turn is user-initiated (they tapped the mic) so it waits as long as it takes.
+                // Follow-ups are the AI's idea, so they time out rather than hold the mic open forever.
+                var timeout = isFollowUp ? this.FollowUpTimeout : null;
+                logger?.LogDebug("Listening for utterance (follow-up: {IsFollowUp}, timeout: {Timeout})", isFollowUp, timeout);
+                var utterance = await this.ReadNextUtteranceAsync(ct, timeout).ConfigureAwait(false);
                 logger?.LogDebug("Utterance received: {Utterance}", utterance);
 
-                if (!String.IsNullOrWhiteSpace(utterance))
-                    await this.TalkTo(utterance, ct).ConfigureAwait(false);
+                if (String.IsNullOrWhiteSpace(utterance))
+                {
+                    if (isFollowUp)
+                        logger?.LogDebug("Follow-up window expired with no answer");
 
-                continueListening = this.lastResponseExpectedReply && !String.IsNullOrWhiteSpace(utterance);
+                    this.ClearPendingQuestions();
+                    break;
+                }
+
+                await this.TalkTo(utterance, ct).ConfigureAwait(false);
+
+                continueListening = this.lastResponseExpectedReply;
+                isFollowUp = true;
                 logger?.LogDebug("Continue listening: {ContinueListening}, ExpectsReply: {ExpectsReply}", continueListening, this.lastResponseExpectedReply);
             }
 
@@ -157,9 +183,21 @@ public class AiConversationService(
                 string? utterance;
                 if (this.lastResponseExpectedReply)
                 {
-                    logger?.LogDebug("AI expects a reply, capturing follow-up utterance directly");
+                    logger?.LogDebug(
+                        "AI expects a reply ({QuestionCount} pending), capturing follow-up utterance directly",
+                        this.pendingQuestions.Length
+                    );
                     this.lastResponseExpectedReply = false;
-                    utterance = await this.ReadNextUtteranceAsync(ct).ConfigureAwait(false);
+                    utterance = await this.ReadNextUtteranceAsync(ct, this.FollowUpTimeout).ConfigureAwait(false);
+
+                    if (String.IsNullOrWhiteSpace(utterance))
+                    {
+                        // Nobody answered - drop the questions and go back to requiring the wake word so
+                        // the next unrelated thing said in the room isn't taken as the answer.
+                        logger?.LogDebug("Follow-up window expired with no answer, returning to wake word");
+                        this.ClearPendingQuestions();
+                        continue;
+                    }
                 }
                 else
                 {
@@ -215,43 +253,62 @@ public class AiConversationService(
             Tools = aiContext.Tools
         };
 
+        var mode = this.StructuredOutputMode ?? chatClientProvider.StructuredOutputMode;
+        if (mode != AiStructuredOutputMode.None)
+            chatMessages.Add(new ChatMessage(ChatRole.System, this.BuildTurnContractPrompt()));
+
         logger?.LogDebug(
-            "Sending {MessageCount} messages to chat client with {ToolCount} tools, Acknowledgement: {Acknowledgement}",
+            "Sending {MessageCount} messages to chat client with {ToolCount} tools, Acknowledgement: {Acknowledgement}, StructuredOutput: {Mode}",
             chatMessages.Count,
             options.Tools.Count,
-            this.Acknowledgement
+            this.Acknowledgement,
+            mode
         );
 
         this.SetStatus(AiState.Responding);
         await this.SafePlay(AiAction.Respond).ConfigureAwait(false);
 
         var wasReadAloud = this.Acknowledgement > AiAcknowledgement.AudioBlip;
-        var response = await chatClient.GetResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false);
+        var (response, turn) = await this
+            .RequestTurn(chatClient, chatMessages, options, mode, cancellationToken)
+            .ConfigureAwait(false);
+
+        // With structured output response.Text is the JSON envelope; the reply is what the user sees
+        // and hears. When parsing failed (or structured output is off) they are one and the same.
+        var replyText = turn?.Reply ?? response.Text;
 
         logger?.LogDebug(
-            "AI response received - HasText: {HasText}, TextLength: {TextLength}, WasReadAloud: {WasReadAloud}",
-            response.Text != null,
-            response.Text?.Length ?? 0,
+            "AI response received - Structured: {Structured}, ReplyLength: {ReplyLength}, Questions: {QuestionCount}, WasReadAloud: {WasReadAloud}",
+            turn != null,
+            replyText?.Length ?? 0,
+            turn?.Questions?.Length ?? 0,
             wasReadAloud
         );
 
         this.currentMessages.Add(userMessage);
+
+        // The raw text goes into history on purpose - keeping the JSON envelope in the transcript
+        // anchors the model to the format on subsequent turns.
         if (response.Text is { } responseText)
             this.currentMessages.Add(new ChatMessage(ChatRole.Assistant, responseText));
 
-        var expectsResponse = TextEndsWithQuestion(response.Text);
+        // Each turn replaces the queue: the model re-asks whatever it still needs, so anything it
+        // stopped asking about is answered.
+        this.pendingQuestions = turn?.Questions ?? [];
+
+        var expectsResponse = turn?.ExpectsResponse ?? TextEndsWithQuestion(replyText);
         this.lastResponseExpectedReply = expectsResponse;
-        logger?.LogDebug("ExpectsResponse: {ExpectsResponse}", expectsResponse);
-        this.RaiseAiResponded(new AiResponse(response, wasReadAloud, expectsResponse));
+        logger?.LogDebug("ExpectsResponse: {ExpectsResponse} (structured: {Structured})", expectsResponse, turn != null);
+        this.RaiseAiResponded(new AiResponse(response, wasReadAloud, expectsResponse, turn));
 
         if (messageStore != null)
         {
             await messageStore
-                .Store(userMessage.Text, response, cancellationToken)
+                .Store(userMessage.Text, replyText, response, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        if (wasReadAloud && response.Text is { } spokenText)
+        if (wasReadAloud && replyText is { } spokenText)
         {
             logger?.LogDebug("Starting TTS for response ({Length} chars), InterruptionEnabled: {InterruptionEnabled}", spokenText.Length, this.InterruptionEnabled);
             var interruption = await this.SpeakWithInterruptionSupport(spokenText, cancellationToken).ConfigureAwait(false);
@@ -260,7 +317,7 @@ public class AiConversationService(
             {
                 case InterruptionKind.QuietWord:
                     logger?.LogDebug("TTS interrupted by quiet word: {Word}", interruption.Text);
-                    this.lastResponseExpectedReply = false;
+                    this.ClearPendingQuestions();
                     return;
 
                 case InterruptionKind.NewUtterance:
@@ -275,6 +332,103 @@ public class AiConversationService(
         }
 
         await this.SafePlay(AiAction.Ok).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Issues the chat request in whichever structured mode the provider supports and parses the turn
+    /// out of it. Every path degrades to plain text rather than failing: an unparseable reply becomes a
+    /// null turn, and the caller falls back to the wording heuristic for the "expects a reply" signal.
+    /// </summary>
+    async Task<(ChatResponse Response, AiTurn? Turn)> RequestTurn(
+        IChatClient chatClient,
+        List<ChatMessage> chatMessages,
+        ChatOptions options,
+        AiStructuredOutputMode mode,
+        CancellationToken cancellationToken
+    )
+    {
+        if (mode == AiStructuredOutputMode.None)
+        {
+            var plain = await chatClient.GetResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false);
+            return (plain, null);
+        }
+
+        if (mode == AiStructuredOutputMode.Prompt)
+        {
+            // No response-format constraint at all - the shape is described in the prompt and we parse
+            // leniently, since models in this mode routinely wrap the JSON in markdown fences.
+            chatMessages.Add(new ChatMessage(ChatRole.System, AiTurnSchemaPrompt));
+            var prompted = await chatClient.GetResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false);
+            return (prompted, this.ParseTurn(prompted.Text));
+        }
+
+        try
+        {
+            var typed = await chatClient
+                .GetResponseAsync<AiTurn>(
+                    chatMessages,
+                    AiTurnSerializer.JsonOptions,
+                    options,
+                    useJsonSchemaResponseFormat: mode == AiStructuredOutputMode.JsonSchema,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+
+            if (typed.TryGetResult(out var result) && !String.IsNullOrWhiteSpace(result?.Reply))
+                return (typed, result);
+
+            // Schema-constrained requests can still come back with fenced or padded JSON on providers
+            // that only approximate the format.
+            return (typed, this.ParseTurn(typed.Text));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The endpoint rejected the response format outright (wrong model, proxy that strips it,
+            // etc). Retrying unstructured is strictly better than surfacing an error to the user.
+            logger?.LogWarning(
+                ex,
+                "Structured output request failed in {Mode} mode - retrying without it. Set IChatClientProvider.StructuredOutputMode to avoid the extra round trip.",
+                mode
+            );
+
+            var fallback = await chatClient.GetResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false);
+            return (fallback, this.ParseTurn(fallback.Text));
+        }
+    }
+
+    AiTurn? ParseTurn(string? text)
+    {
+        var turn = AiTurnSerializer.Parse(text);
+        if (turn == null && !String.IsNullOrWhiteSpace(text))
+            logger?.LogDebug("Response was not a parseable AiTurn, falling back to plain text handling");
+
+        return turn;
+    }
+
+    string BuildTurnContractPrompt()
+    {
+        // Voice and text want different question density: a list of three questions reads fine as chips
+        // and is unusable when spoken.
+        var questionLimit = this.Acknowledgement > AiAcknowledgement.AudioBlip
+            ? "Your reply is being spoken aloud, so ask at most one question per turn."
+            : "You may ask more than one question in a turn when they are genuinely independent.";
+
+        return
+            "Reply with a single JSON object. Put the natural-language answer - everything the user should " +
+            "read or hear - in 'reply', as plain prose with no JSON inside it. " +
+            "When you need something back from the user before you can continue, add an entry to 'questions' " +
+            "with a stable 'id' and the question text; leave 'questions' empty for a turn that needs nothing back. " +
+            "When a question has a small fixed set of valid answers, list them in 'choices' with a stable 'id' " +
+            "and a short 'label', and set 'allowMultiple' when more than one may be picked. " +
+            "Still phrase the question naturally inside 'reply' - the structured questions drive the interface, " +
+            "they are not shown to the user verbatim. " +
+            questionLimit;
+    }
+
+    void ClearPendingQuestions()
+    {
+        this.pendingQuestions = [];
+        this.lastResponseExpectedReply = false;
     }
 
     async Task<InterruptionResult> SpeakWithInterruptionSupport(string text, CancellationToken cancellationToken)
@@ -571,6 +725,7 @@ public class AiConversationService(
         {
             this.sessionStarted = false;
             Interlocked.Exchange(ref this.suppressResultsUntilTicks, 0);
+            this.ClearPendingQuestions();
             this.SetStatus(AiState.Idle);
         }
     }
@@ -661,7 +816,11 @@ public class AiConversationService(
         channel.Reader.TryRead(out _);
     }
 
-    async Task<string?> ReadNextUtteranceAsync(CancellationToken ct)
+    /// <summary>
+    /// Waits for the next final utterance. When <paramref name="timeout"/> is supplied and elapses first,
+    /// returns null rather than throwing - the caller treats that as "the user didn't answer".
+    /// </summary>
+    async Task<string?> ReadNextUtteranceAsync(CancellationToken ct, TimeSpan? timeout = null)
     {
         var channel = this.recognitionChannel
             ?? throw new InvalidOperationException("Speech session is not active.");
@@ -670,17 +829,32 @@ public class AiConversationService(
         // result truly represents the current user utterance.
         this.DrainRecognitionChannel();
 
-        await foreach (var result in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        using var timeoutCts = timeout is { } window
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+
+        timeoutCts?.CancelAfter(timeout!.Value);
+        var token = timeoutCts?.Token ?? ct;
+
+        try
         {
-            if (result.IsFinal)
+            await foreach (var result in channel.Reader.ReadAllAsync(token).ConfigureAwait(false))
             {
-                var text = result.Text?.Trim();
-                if (!String.IsNullOrWhiteSpace(text))
+                if (result.IsFinal)
                 {
-                    this.RaiseSpeech(ConversationSpeechSource.Heard, text);
-                    return text;
+                    var text = result.Text?.Trim();
+                    if (!String.IsNullOrWhiteSpace(text))
+                    {
+                        this.RaiseSpeech(ConversationSpeechSource.Heard, text);
+                        return text;
+                    }
                 }
             }
+        }
+        catch (OperationCanceledException) when (timeoutCts is { IsCancellationRequested: true } && !ct.IsCancellationRequested)
+        {
+            // The follow-up window expired, not the session - let the caller decide what that means.
+            return null;
         }
 
         return null;

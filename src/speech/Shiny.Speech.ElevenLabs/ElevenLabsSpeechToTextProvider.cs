@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Shiny.Audio;
 using Shiny.Speech.Cloud;
 
 namespace Shiny.Speech.ElevenLabs;
@@ -142,7 +143,7 @@ public class ElevenLabsSpeechToTextProvider(
         MemoryStream pcm,
         SpeechRecognitionOptions options)
     {
-        var wav = BuildWavFile(pcm.GetBuffer().AsSpan(0, (int)pcm.Length));
+        var wav = WavWriter.CreateFile(pcm.GetBuffer().AsSpan(0, (int)pcm.Length), SampleRate, Channels, BitsPerSample);
 
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(config.SpeechToTextModel), "model_id");
@@ -218,46 +219,6 @@ public class ElevenLabsSpeechToTextProvider(
             sumSquares += sample * sample;
         }
         return (int)Math.Sqrt(sumSquares / (double)samples);
-    }
-
-    static byte[] BuildWavFile(ReadOnlySpan<byte> pcm)
-    {
-        var dataSize = pcm.Length;
-        var buffer = new byte[44 + dataSize];
-        var span = buffer.AsSpan();
-
-        "RIFF"u8.CopyTo(span[..4]);
-        WriteInt32(span[4..8], 36 + dataSize);
-        "WAVE"u8.CopyTo(span[8..12]);
-
-        "fmt "u8.CopyTo(span[12..16]);
-        WriteInt32(span[16..20], 16);
-        WriteInt16(span[20..22], 1);
-        WriteInt16(span[22..24], Channels);
-        WriteInt32(span[24..28], SampleRate);
-        WriteInt32(span[28..32], SampleRate * Channels * BitsPerSample / 8);
-        WriteInt16(span[32..34], (short)(Channels * BitsPerSample / 8));
-        WriteInt16(span[34..36], BitsPerSample);
-
-        "data"u8.CopyTo(span[36..40]);
-        WriteInt32(span[40..44], dataSize);
-        pcm.CopyTo(span[44..]);
-
-        return buffer;
-    }
-
-    static void WriteInt32(Span<byte> dest, int value)
-    {
-        dest[0] = (byte)(value & 0xFF);
-        dest[1] = (byte)((value >> 8) & 0xFF);
-        dest[2] = (byte)((value >> 16) & 0xFF);
-        dest[3] = (byte)((value >> 24) & 0xFF);
-    }
-
-    static void WriteInt16(Span<byte> dest, short value)
-    {
-        dest[0] = (byte)(value & 0xFF);
-        dest[1] = (byte)((value >> 8) & 0xFF);
     }
 
     sealed class ScribeResponse

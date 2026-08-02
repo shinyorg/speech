@@ -127,7 +127,7 @@ public partial class AuraViewModel(
             return;
         }
 
-        if (response.Response.Text is { } text)
+        if (response.Text is { } text)
         {
             MainThread.BeginInvokeOnMainThread(() =>
             {

@@ -12,13 +12,15 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
     AudioGraph? audioGraph;
     AudioDeviceInputNode? inputNode;
     AudioFrameOutputNode? outputNode;
-    PipeStream? pipe;
-    AudioLevelThrottle? levelThrottle;
+    CaptureSink? sink;
 
     public event EventHandler<double>? InputLevelChanged;
 
-    public async Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+    public async Task<Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        var processing = options.Processing;
+
         var encoding = AudioEncodingProperties.CreatePcm(16000, 1, 16);
 
         // AudioGraph only exposes Raw vs Default capture processing (no per-effect control).
@@ -49,8 +51,7 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         outputNode = audioGraph.CreateFrameOutputNode(encoding);
         inputNode.AddOutgoingConnection(outputNode);
 
-        pipe = new PipeStream();
-        levelThrottle = new AudioLevelThrottle();
+        sink = new CaptureSink(options, level => InputLevelChanged?.Invoke(this, level));
 
         audioGraph.QuantumStarted += (graph, _) =>
         {
@@ -60,7 +61,7 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
 
         audioGraph.Start();
         logger.LogDebug("Windows audio capture started");
-        return pipe;
+        return sink.Stream;
     }
 
     void ProcessAudioFrame(AudioFrame frame)
@@ -77,18 +78,9 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
                 var data = new byte[capacity];
                 Marshal.Copy((IntPtr)dataPtr, data, 0, (int)capacity);
 
-                // QuantumStarted fires every 10ms — throttled so a meter doesn't get 100 events/sec.
-                var throttle = levelThrottle;
-                if (throttle != null && throttle.TryEmit(AudioLevel.FromPcm16(data), out var level))
-                    InputLevelChanged?.Invoke(this, level);
-
-                try
-                {
-                    pipe?.Write(data, 0, data.Length);
-                }
-                catch (ObjectDisposedException)
-                {
-                }
+                // QuantumStarted fires every 10ms; the sink throttles metering so a meter doesn't
+                // get 100 events/sec.
+                sink?.Write(data, 0, data.Length);
             }
         }
     }
@@ -99,13 +91,12 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
         inputNode?.Dispose();
         outputNode?.Dispose();
         audioGraph?.Dispose();
-        pipe?.Dispose();
+        sink?.Dispose();
 
         inputNode = null;
         outputNode = null;
         audioGraph = null;
-        pipe = null;
-        levelThrottle = null;
+        sink = null;
 
         logger.LogDebug("Windows audio capture stopped");
         return Task.CompletedTask;

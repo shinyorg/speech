@@ -12,6 +12,7 @@ public class AudioFacade(IServiceProvider services) : IAudio
 {
     public IAudioPlayer Player => services.GetRequiredService<IAudioPlayer>();
     public IAudioSource Source => services.GetRequiredService<IAudioSource>();
+    public IAudioRecorder Recorder => services.GetRequiredService<IAudioRecorder>();
 
     public IAudioMonitor Monitor => services.GetService<IAudioMonitor>()
         ?? throw new PlatformNotSupportedException($"Live audio monitoring is only available on iOS/Mac Catalyst, Android and Linux.{LinuxHint}");

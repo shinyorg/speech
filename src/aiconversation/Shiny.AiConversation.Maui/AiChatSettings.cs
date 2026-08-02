@@ -47,6 +47,12 @@ public class AiChatSettings
     /// <summary>Appends a token usage footer to each AI message when the provider reports usage.</summary>
     public bool ShowTokenUsage { get; set; }
 
+    /// <summary>
+    /// Renders tappable buttons under an AI bubble when the turn carries <see cref="AiQuestion.Choices"/>.
+    /// Requires structured output to be enabled on the conversation service (the default).
+    /// </summary>
+    public bool ShowChoiceButtons { get; set; } = true;
+
     /// <summary>Optional message shown from the AI when there is no history to display.</summary>
     public string? GreetingMessage { get; set; }
 

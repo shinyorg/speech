@@ -4,6 +4,7 @@
         "projects": [
             "src/audio/Shiny.Audio/Shiny.Audio.csproj",
             "src/audio/Shiny.Audio.Linux/Shiny.Audio.Linux.csproj",
+            "src/audio/tests/Shiny.Audio.Tests/Shiny.Audio.Tests.csproj",
             "src/speech/Shiny.Speech/Shiny.Speech.csproj",
             "src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj",
             "src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj",

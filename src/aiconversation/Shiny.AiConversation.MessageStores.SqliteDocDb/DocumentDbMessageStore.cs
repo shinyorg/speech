@@ -6,7 +6,7 @@ namespace Shiny.AiConversation.MessageStores.SqliteDocDb;
 
 public class DocumentDbMessageStore(IDocumentStore store) : IMessageStore
 {
-    public async Task Store(string? userTriggeringMessage, ChatResponse response, CancellationToken cancellationToken)
+    public async Task Store(string? userTriggeringMessage, string? assistantMessage, ChatResponse response, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -24,7 +24,9 @@ public class DocumentDbMessageStore(IDocumentStore store) : IMessageStore
             ).ConfigureAwait(false);
         }
 
-        if (response.Text is { } text && !String.IsNullOrWhiteSpace(text))
+        // assistantMessage is the display reply - with structured output response.Text is the JSON
+        // envelope, which would otherwise leak into history and the chat-history lookup tool.
+        if (assistantMessage is { } text && !String.IsNullOrWhiteSpace(text))
         {
             var usage = response.Usage;
             await store.Insert(

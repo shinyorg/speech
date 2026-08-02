@@ -33,7 +33,7 @@ public class AiConversationServiceTests
             .ReturnsAsync(chatClient.Instance());
 
         messageStore
-            .Store(Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
+            .Store(Arg<string?>.Any(), Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
             .Returns(Task.CompletedTask);
 
         textToSpeech
@@ -124,7 +124,7 @@ public class AiConversationServiceTests
         await service.TalkTo("Stored input", CancellationToken.None);
 
         messageStore
-            .Store(Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
+            .Store(Arg<string?>.Any(), Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
             .Called(Count.Once());
     }
 
@@ -137,7 +137,7 @@ public class AiConversationServiceTests
         await service.TalkTo("Test", CancellationToken.None);
 
         messageStore
-            .Store(Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
+            .Store(Arg<string?>.Any(), Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
             .Called(Count.Never());
     }
 
@@ -397,7 +397,424 @@ public class AiConversationServiceTests
 
     #endregion
 
+    #region Structured Turns
+
+    const string TurnWithQuestions =
+        """
+        {
+          "reply": "Sure - which time works for you?",
+          "questions": [
+            {
+              "id": "time",
+              "text": "Which time?",
+              "choices": [
+                { "id": "am", "label": "9:00 am" },
+                { "id": "pm", "label": "2:00 pm" }
+              ],
+              "allowMultiple": false
+            }
+          ]
+        }
+        """;
+
+    const string TurnWithoutQuestions = """{"reply":"Booked for 9am.","questions":[]}""";
+
+    [Test]
+    public async Task StructuredTurn_SurfacesReplyNotRawJson()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, TurnWithQuestions);
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received).IsNotNull();
+        await Assert.That(received!.Text).IsEqualTo("Sure - which time works for you?");
+        await Assert.That(received.Turn).IsNotNull();
+    }
+
+    [Test]
+    public async Task StructuredTurn_PopulatesPendingQuestionsAndExpectsResponse()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, TurnWithQuestions);
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received!.ExpectsResponse).IsTrue();
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(1);
+        await Assert.That(service.PendingQuestions[0].Id).IsEqualTo("time");
+        await Assert.That(service.PendingQuestions[0].Choices!.Length).IsEqualTo(2);
+        await Assert.That(service.PendingQuestions[0].Choices![0].Label).IsEqualTo("9:00 am");
+    }
+
+    [Test]
+    public async Task StructuredTurn_WithNoQuestions_DoesNotExpectResponse()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, TurnWithoutQuestions);
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("9am please", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received!.ExpectsResponse).IsFalse();
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task StructuredTurn_ReplacesPendingQueueEachTurn()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+
+        SetupResponse(chatClient, TurnWithQuestions);
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(1);
+
+        // The model stops asking, so the queue empties rather than holding the earlier question.
+        SetupResponse(chatClient, TurnWithoutQuestions);
+        await service.TalkTo("9am", CancellationToken.None);
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task StructuredTurn_ParsesJsonWrappedInMarkdownFence()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, $"Here you go:\n```json\n{TurnWithoutQuestions}\n```");
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("Book it", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received!.Text).IsEqualTo("Booked for 9am.");
+    }
+
+    [Test]
+    public async Task StructuredTurn_SpeaksReplyNotRawJson()
+    {
+        var (service, _, chatClient, _, textToSpeech, _, _, _) = CreateService(withMessageStore: false);
+        service.Acknowledgement = AiAcknowledgement.Full;
+        SetupResponse(chatClient, TurnWithoutQuestions);
+
+        string? spoken = null;
+        textToSpeech
+            .SpeakAsync(Arg<string>.Any(), Arg<Shiny.Speech.TextToSpeechOptions?>.Any(), Arg<CancellationToken>.Any())
+            .Returns((text, _, _) =>
+            {
+                spoken = text;
+                return Task.CompletedTask;
+            });
+
+        await service.TalkTo("Book it", CancellationToken.None);
+
+        await Assert.That(spoken).IsEqualTo("Booked for 9am.");
+    }
+
+    [Test]
+    public async Task StructuredTurn_StoresReplyNotRawJson()
+    {
+        var (service, _, chatClient, _, _, _, messageStore, _) = CreateService();
+        SetupResponse(chatClient, TurnWithoutQuestions);
+
+        string? stored = null;
+        messageStore
+            .Store(Arg<string?>.Any(), Arg<string?>.Any(), Arg<ChatResponse>.Any(), Arg<CancellationToken>.Any())
+            .Returns((_, assistantMessage, _, _) =>
+            {
+                stored = assistantMessage;
+                return Task.CompletedTask;
+            });
+
+        await service.TalkTo("Book it", CancellationToken.None);
+
+        await Assert.That(stored).IsEqualTo("Booked for 9am.");
+    }
+
+    [Test]
+    public async Task StructuredTurn_KeepsRawEnvelopeInChatHistory()
+    {
+        // The JSON stays in the transcript on purpose - it anchors the model to the format next turn.
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, TurnWithoutQuestions);
+
+        await service.TalkTo("Book it", CancellationToken.None);
+
+        await Assert.That(service.CurrentChatMessages[1].Text).IsEqualTo(TurnWithoutQuestions);
+    }
+
+    [Test]
+    public async Task UnparseableResponse_FallsBackToPlainTextAndQuestionHeuristic()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, "Which time works for you?");
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received!.Turn).IsNull();
+        await Assert.That(received.Text).IsEqualTo("Which time works for you?");
+        await Assert.That(received.ExpectsResponse).IsTrue();
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task StructuredOutputMode_None_SkipsParsingEntirely()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        service.StructuredOutputMode = AiStructuredOutputMode.None;
+        SetupResponse(chatClient, TurnWithQuestions);
+
+        AiResponse? received = null;
+        service.AiResponded += r => received = r;
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Task.Delay(100);
+
+        await Assert.That(received!.Turn).IsNull();
+        await Assert.That(received.Text).IsEqualTo(TurnWithQuestions);
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task StructuredOutputMode_None_OmitsTurnContractPrompt()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        service.StructuredOutputMode = AiStructuredOutputMode.None;
+
+        IEnumerable<ChatMessage>? captured = null;
+        chatClient
+            .GetResponseAsync(
+                Arg<IEnumerable<ChatMessage>>.Any(),
+                Arg<ChatOptions?>.Any(),
+                Arg<CancellationToken>.Any()
+            )
+            .Returns((messages, _, _) =>
+            {
+                captured = messages;
+                return Task.FromResult(CreateResponse("OK"));
+            });
+
+        await service.TalkTo("Hello", CancellationToken.None);
+
+        var prompts = captured!.Where(m => m.Role == ChatRole.System).Select(m => m.Text ?? "");
+        await Assert.That(prompts.Any(p => p.Contains("'questions'"))).IsFalse();
+    }
+
+    [Test]
+    public async Task TurnContractPrompt_LimitsToOneQuestion_WhenSpokenAloud()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        service.Acknowledgement = AiAcknowledgement.Full;
+
+        IEnumerable<ChatMessage>? captured = null;
+        chatClient
+            .GetResponseAsync(
+                Arg<IEnumerable<ChatMessage>>.Any(),
+                Arg<ChatOptions?>.Any(),
+                Arg<CancellationToken>.Any()
+            )
+            .Returns((messages, _, _) =>
+            {
+                captured = messages;
+                return Task.FromResult(CreateResponse(TurnWithoutQuestions));
+            });
+
+        await service.TalkTo("Hello", CancellationToken.None);
+
+        var prompts = captured!.Where(m => m.Role == ChatRole.System).Select(m => m.Text ?? "").ToList();
+        await Assert.That(prompts.Any(p => p.Contains("at most one question per turn"))).IsTrue();
+    }
+
+    [Test]
+    public async Task TurnContractPrompt_AllowsSeveralQuestions_WhenNotSpokenAloud()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        service.Acknowledgement = AiAcknowledgement.None;
+
+        IEnumerable<ChatMessage>? captured = null;
+        chatClient
+            .GetResponseAsync(
+                Arg<IEnumerable<ChatMessage>>.Any(),
+                Arg<ChatOptions?>.Any(),
+                Arg<CancellationToken>.Any()
+            )
+            .Returns((messages, _, _) =>
+            {
+                captured = messages;
+                return Task.FromResult(CreateResponse(TurnWithoutQuestions));
+            });
+
+        await service.TalkTo("Hello", CancellationToken.None);
+
+        var prompts = captured!.Where(m => m.Role == ChatRole.System).Select(m => m.Text ?? "").ToList();
+        await Assert.That(prompts.Any(p => p.Contains("more than one question"))).IsTrue();
+    }
+
+    [Test]
+    public async Task ClearCurrentChat_ClearsPendingQuestions()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(chatClient, TurnWithQuestions);
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(1);
+
+        service.ClearCurrentChat();
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task MultipleQuestions_AreAllQueued()
+    {
+        var (service, _, chatClient, _, _, _, _, _) = CreateService(withMessageStore: false);
+        SetupResponse(
+            chatClient,
+            """
+            {
+              "reply": "A couple of things first.",
+              "questions": [
+                { "id": "time", "text": "Which time?" },
+                { "id": "size", "text": "How many people?", "allowMultiple": true }
+              ]
+            }
+            """
+        );
+
+        await service.TalkTo("Book me in", CancellationToken.None);
+
+        await Assert.That(service.PendingQuestions.Count).IsEqualTo(2);
+        await Assert.That(service.PendingQuestions[1].AllowMultiple).IsTrue();
+        await Assert.That(service.PendingQuestions[1].HasChoices).IsFalse();
+    }
+
+    #endregion
+
+    #region Follow-up window
+
+    [Test]
+    public async Task FollowUp_ContinuesWithoutWakeWord_WhenAiAsksAQuestion()
+    {
+        var (service, _, chatClient, speechToText, _, _, _, _) = CreateService(withMessageStore: false);
+        service.Acknowledgement = AiAcknowledgement.AudioBlip; // no TTS, so no echo-suppression window
+        service.FollowUpTimeout = TimeSpan.FromSeconds(5);
+
+        var calls = 0;
+        chatClient
+            .GetResponseAsync(
+                Arg<IEnumerable<ChatMessage>>.Any(),
+                Arg<ChatOptions?>.Any(),
+                Arg<CancellationToken>.Any()
+            )
+            .Returns((_, _, _) =>
+            {
+                var turn = Interlocked.Increment(ref calls) == 1 ? TurnWithQuestions : TurnWithoutQuestions;
+                return Task.FromResult(CreateResponse(turn));
+            });
+
+        await service.StartWakeWord("Hey Bot");
+        try
+        {
+            await RaiseKeywordAsync(speechToText, "Hey Bot");
+            await RaiseFinalAsync(speechToText, "Book me in");
+            await WaitForAsync(() => service.PendingQuestions.Count == 1);
+
+            // The answer arrives with no wake word - the follow-up window is still open.
+            await RaiseFinalAsync(speechToText, "9am");
+            await WaitForAsync(() => Volatile.Read(ref calls) == 2);
+
+            await Assert.That(Volatile.Read(ref calls)).IsEqualTo(2);
+            await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+        }
+        finally
+        {
+            await service.StopWakeWord();
+        }
+    }
+
+    [Test]
+    public async Task FollowUp_TimesOutAndRequiresWakeWordAgain_WhenNobodyAnswers()
+    {
+        var (service, _, chatClient, speechToText, _, _, _, _) = CreateService(withMessageStore: false);
+        service.Acknowledgement = AiAcknowledgement.AudioBlip;
+        service.FollowUpTimeout = TimeSpan.FromMilliseconds(300);
+
+        var calls = 0;
+        chatClient
+            .GetResponseAsync(
+                Arg<IEnumerable<ChatMessage>>.Any(),
+                Arg<ChatOptions?>.Any(),
+                Arg<CancellationToken>.Any()
+            )
+            .Returns((_, _, _) =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromResult(CreateResponse(TurnWithQuestions));
+            });
+
+        await service.StartWakeWord("Hey Bot");
+        try
+        {
+            await RaiseKeywordAsync(speechToText, "Hey Bot");
+            await RaiseFinalAsync(speechToText, "Book me in");
+            await WaitForAsync(() => service.PendingQuestions.Count == 1);
+
+            // Nobody answers - the window closes and the queue is dropped.
+            await WaitForAsync(() => service.PendingQuestions.Count == 0, timeoutMs: 3000);
+            await Assert.That(service.PendingQuestions.Count).IsEqualTo(0);
+
+            // Unrelated speech in the room must NOT reach the AI now that the window has closed.
+            await RaiseFinalAsync(speechToText, "did you watch the game last night");
+            await Task.Delay(400);
+
+            await Assert.That(Volatile.Read(ref calls)).IsEqualTo(1);
+        }
+        finally
+        {
+            await service.StopWakeWord();
+        }
+    }
+
+    #endregion
+
     #region Helpers
+
+    // Both readers flush anything buffered before they start waiting (so a stale keyword or a partial
+    // from the previous turn can't be mistaken for this one). That means a raise landing before the
+    // loop reaches its wait is discarded - hence the beat before each one.
+    static async Task RaiseKeywordAsync(ISpeechToTextServiceImposter speechToText, string keyword)
+    {
+        await Task.Delay(150);
+        speechToText.KeywordHeard.Raise(speechToText, keyword);
+    }
+
+    static async Task RaiseFinalAsync(ISpeechToTextServiceImposter speechToText, string text)
+    {
+        await Task.Delay(150);
+        speechToText.ResultReceived.Raise(speechToText, new SpeechRecognitionResult(text, true, 0.9f));
+    }
+
+    static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 2000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline && !condition())
+            await Task.Delay(25);
+    }
+
 
     static void SetupResponse(IChatClientImposter chatClient, string responseText)
     {

@@ -11,15 +11,21 @@ but is usable on its own:
   normalized `InputLevelChanged` VU signal on every platform.
 - **`IAudioPlayer`** — stream playback (e.g. MP3) with optional normalized `AudioLevelChanged`
   metering for VU-style UI.
+- **`IAudioRecorder`** — record the microphone straight to a WAV file, optionally through a live
+  effect chain, capturing the processed take, the raw one, or both.
+- **`AudioEffectChain`** — real-time DSP on capture (pitch shift, echo, reverb, filters, distortion,
+  ring modulation, chorus, gain, noise gate) that you toggle and re-tune *while recording*.
 - **`AudioLevel`** — the shared dBFS mapping behind every meter (`FromRms` / `FromPcm16` /
   `FromSamples`), so input and output bars read on the same scale — including PCM you meter yourself.
+- **`WavWriter` / `WavReader`** — streaming RIFF/WAVE PCM I/O, plus `AudioEffectProcessor` for
+  applying an effect chain to a file that already exists.
 
 ## Getting Started
 
 ```csharp
 using Shiny;
 
-builder.Services.AddAudioServices(); // registers IAudioSource + IAudioPlayer
+builder.Services.AddAudioServices(); // registers IAudioSource, IAudioPlayer, IAudioRecorder, ...
 ```
 
 ```csharp
@@ -32,12 +38,46 @@ public class Recorder(IAudioSource audioSource)
         if (await audioSource.RequestAccess() != AccessState.Available)
             return;
 
-        var pcmStream = await audioSource.StartCaptureAsync(ct);
+        var pcmStream = await audioSource.StartCaptureAsync(cancellationToken: ct);
         // consume pcmStream ...
         await audioSource.StopCaptureAsync();
     }
 }
 ```
+
+## Effects & recording
+
+Effects are caller-owned objects. Build a chain, hand it to a capture or recording session, and keep
+the reference — toggling an effect or moving a parameter applies on the next audio buffer, with no
+restart and no clicks.
+
+```csharp
+using Shiny.Audio;
+
+var chain = new AudioEffectChain();
+var pitch = chain.Add(new PitchShiftEffect { Semitones = 0 });
+var echo  = chain.Add(new EchoEffect { Enabled = false });
+
+await recorder.StartAsync(new AudioRecordingOptions
+{
+    Mode = AudioRecordMode.Both,   // writes the processed and the raw take
+    Effects = chain
+});
+
+pitch.Semitones = 5;      // heard immediately
+echo.Enabled = true;
+chain.Enabled = false;    // master bypass
+
+var recording = await recorder.StopAsync();
+```
+
+Available effects: `GainEffect`, `NoiseGateEffect`, `BiquadFilterEffect`, `DistortionEffect`,
+`RingModEffect`, `EchoEffect`, `ChorusEffect`, `ReverbEffect`, `PitchShiftEffect` — plus
+`AudioEffectPresets.Create(...)` for ready-made combinations (Robot, Chipmunk, DeepVoice, Cathedral,
+Telephone, Megaphone, Ensemble).
+
+> **Do not put effects on audio bound for speech recognition** — they destroy recognition and
+> wake-word accuracy.
 
 | Platform | Audio Capture | Audio Playback |
 | --- | --- | --- |

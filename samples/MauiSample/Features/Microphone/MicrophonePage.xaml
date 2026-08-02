@@ -93,6 +93,96 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Effects -->
+            <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
+                    Padding="16"
+                    StrokeShape="RoundRectangle 12"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeThickness="1">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="EFFECTS"
+                           FontSize="11"
+                           FontFamily="OpenSansSemibold"
+                           TextColor="{StaticResource Gray400}" />
+                    <Label Text="Every control here is live — toggle a switch or drag a slider while recording and you hear it on the next buffer. No restart, no clicks."
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="All effects" VerticalOptions="Center" FontFamily="OpenSansSemibold" />
+                        <Switch Grid.Column="1" IsToggled="{Binding EffectsEnabled}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+
+                    <BoxView HeightRequest="1" Color="{StaticResource Gray600}" Opacity="0.4" />
+
+                    <!-- Pitch -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Pitch shift" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding PitchEnabled}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding PitchSemitones, StringFormat='{0:+0;-0;0} st'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="-12" Maximum="12" Value="{Binding PitchSemitones}" />
+                    </Grid>
+
+                    <!-- Echo -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Echo" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding EchoEnabled}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding EchoDelayMs, StringFormat='{0:0} ms'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="20" Maximum="1000" Value="{Binding EchoDelayMs}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding EchoMix, StringFormat='mix {0:0.00}'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding EchoMix}" />
+                    </Grid>
+
+                    <!-- Reverb -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Reverb" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding ReverbEnabled}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding ReverbRoomSize, StringFormat='room {0:0.00}'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding ReverbRoomSize}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding ReverbMix, StringFormat='mix {0:0.00}'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding ReverbMix}" />
+                    </Grid>
+
+                    <!-- Ring modulator -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Robot (ring mod)" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding RobotEnabled}" OnColor="{StaticResource Primary}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,*" ColumnSpacing="10">
+                        <Label Text="{Binding RobotFrequency, StringFormat='{0:0} Hz'}"
+                               VerticalOptions="Center"
+                               FontSize="12"
+                               TextColor="{StaticResource Gray400}" />
+                        <Slider Grid.Column="1" Minimum="10" Maximum="400" Value="{Binding RobotFrequency}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Record & Play -->
             <Border BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}"
                     Padding="16"
@@ -107,6 +197,21 @@
                     <Label Text="{Binding RecordStatus}"
                            FontSize="12"
                            TextColor="{StaticResource Gray400}" />
+
+                    <Label Text="Wet records the effects, Dry records the raw mic, Both writes two files so you can compare."
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+                    <Picker ItemsSource="{Binding RecordModes}"
+                            SelectedItem="{Binding SelectedRecordMode}"
+                            IsEnabled="{Binding CanChangeRecordMode}"
+                            Title="Record mode" />
+
+                    <Label Text="Level"
+                           FontSize="11"
+                           TextColor="{StaticResource Gray400}" />
+                    <ProgressBar Progress="{Binding Level}"
+                                 ProgressColor="{StaticResource Primary}" />
+
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                         <Button Grid.Column="0"
                                 Text="{Binding RecordButtonText}"
@@ -122,6 +227,13 @@
                                 FontSize="16"
                                 HeightRequest="50" />
                     </Grid>
+                    <Button Text="▶  Play dry take"
+                            Command="{Binding PlayDryCommand}"
+                            IsEnabled="{Binding CanPlayDry}"
+                            IsVisible="{Binding CanPlayDry}"
+                            CornerRadius="12"
+                            FontSize="14"
+                            HeightRequest="44" />
                 </VerticalStackLayout>
             </Border>
 

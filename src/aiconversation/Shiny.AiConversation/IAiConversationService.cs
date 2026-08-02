@@ -88,6 +88,27 @@ public interface IAiConversationService
     IReadOnlyList<ChatMessage> CurrentChatMessages { get; }
 
     /// <summary>
+    /// The questions the AI is currently waiting on, from the most recent turn. Each turn <b>replaces</b>
+    /// this queue - the model is the source of truth for what it still needs, so anything it stops asking
+    /// for is considered answered. Empty when the AI is not waiting on anything.
+    /// </summary>
+    IReadOnlyList<AiQuestion> PendingQuestions { get; }
+
+    /// <summary>
+    /// How long to keep listening for the user's answer after the AI asks a question, before clearing
+    /// <see cref="PendingQuestions"/> and returning to the wake word (or ending a
+    /// <see cref="ListenAndTalk"/> loop). Null waits indefinitely, which in wake-word mode leaves the
+    /// microphone hot so unrelated speech in the room becomes the answer. Defaults to 20 seconds.
+    /// </summary>
+    TimeSpan? FollowUpTimeout { get; set; }
+
+    /// <summary>
+    /// Overrides the structured output mode declared by the registered
+    /// <see cref="IChatClientProvider.StructuredOutputMode"/>. Leave null to use the provider's own value.
+    /// </summary>
+    AiStructuredOutputMode? StructuredOutputMode { get; set; }
+
+    /// <summary>
     /// Clears all in-memory chat messages for the current conversation session.
     /// Does not affect persisted history.
     /// </summary>
@@ -174,11 +195,32 @@ public enum AiAcknowledgement
     Full
 }
 
+/// <summary>
+/// A completed AI turn as surfaced to the app.
+/// </summary>
+/// <param name="Response">The underlying response. When structured output is in play its
+/// <see cref="ChatResponse.Text"/> is the raw JSON envelope - use <paramref name="Turn"/> or
+/// <see cref="AiResponse.Text"/> for anything user-facing.</param>
+/// <param name="WasReadAloud">True when the reply was spoken by text-to-speech.</param>
+/// <param name="ExpectsResponse">True when the AI is waiting on the user, so the listener stays open.</param>
+/// <param name="Turn">The parsed structured turn, or null when the reply was plain text (structured
+/// output disabled, or the model returned something unparseable and the service fell back).</param>
 public record AiResponse(
     ChatResponse Response,
     bool WasReadAloud,
-    bool ExpectsResponse
-);
+    bool ExpectsResponse,
+    AiTurn? Turn = null
+)
+{
+    /// <summary>
+    /// The display text for this turn - the parsed reply when structured, the raw response text otherwise.
+    /// Always prefer this over <c>Response.Text</c> when rendering or speaking.
+    /// </summary>
+    public string? Text => this.Turn?.Reply ?? this.Response.Text;
+
+    /// <summary>The questions carried by this turn, or empty when there are none.</summary>
+    public IReadOnlyList<AiQuestion> Questions => this.Turn?.Questions ?? [];
+}
 
 /// <summary>
 /// Identifies which side of the conversation a <see cref="ConversationSpeech"/> event represents.

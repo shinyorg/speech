@@ -9,7 +9,7 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
 {
     AVAudioEngine? audioEngine;
     AVAudioConverter? converter;
-    Stream? outputStream;
+    CaptureSink? sink;
 
     public event EventHandler<double>? InputLevelChanged;
 
@@ -23,8 +23,11 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
     string? priorMode;
 #endif
 
-    public Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+    public Task<Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        var processing = options.Processing;
+
         audioEngine = new AVAudioEngine();
 
 #if !MACOS
@@ -101,25 +104,20 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         var outputFormat = new AVAudioFormat(AVAudioCommonFormat.PCMInt16, 16000, 1, false);
         converter = new AVAudioConverter(inputFormat, outputFormat);
 
-        var pipe = new PipeStream();
-        outputStream = pipe;
-
-        var throttle = new AudioLevelThrottle();
+        var captureSink = new CaptureSink(options, level => InputLevelChanged?.Invoke(this, level));
+        sink = captureSink;
 
         inputNode.InstallTapOnBus(0, 4096, inputFormat, (buffer, when) =>
         {
             try
             {
+                // Converted to the contract format first, so effects and metering see the same PCM
+                // the consumer receives regardless of what the hardware natively produces.
                 var data = Convert(buffer, outputFormat);
                 if (data.Length == 0)
                     return;
 
-                // Metered after conversion so the level reflects the PCM the consumer actually
-                // receives (and so the same code path covers every input hardware format).
-                if (throttle.TryEmit(AudioLevel.FromPcm16(data), out var level))
-                    InputLevelChanged?.Invoke(this, level);
-
-                pipe.Write(data, 0, data.Length);
+                captureSink.Write(data, 0, data.Length);
             }
             catch (ObjectDisposedException)
             {
@@ -149,7 +147,7 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
             route?.PortType ?? "unknown"
         );
 #endif
-        return Task.FromResult<Stream>(pipe);
+        return Task.FromResult(captureSink.Stream);
     }
 
     byte[] Convert(AVAudioPcmBuffer input, AVAudioFormat outputFormat)
@@ -217,7 +215,9 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         converter?.Dispose();
         converter = null;
 
-        outputStream?.Dispose();
+        sink?.Dispose();
+        sink = null;
+
         logger.LogDebug("Apple audio capture stopped");
         return Task.CompletedTask;
     }

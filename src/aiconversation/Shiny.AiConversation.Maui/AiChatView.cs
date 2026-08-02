@@ -169,6 +169,40 @@ public class AiChatView : ChatView
         set => SetValue(ShowTokenUsageProperty, value);
     }
 
+    public static readonly BindableProperty ShowChoiceButtonsProperty = BindableProperty.Create(
+        nameof(ShowChoiceButtons), typeof(bool), typeof(AiChatView), true,
+        propertyChanged: (b, _, _) =>
+        {
+            var view = (AiChatView)b;
+            view.SyncSettings();
+            view.ApplyChoiceTemplate();
+        }
+    );
+
+    /// <summary>
+    /// Renders a button per <see cref="AiChoice"/> under AI bubbles that ask a question with a fixed set
+    /// of answers; tapping one sends its label back as the user's answer. Requires structured output on
+    /// the conversation service (the default). Setting your own
+    /// <see cref="ChatView.MessageTemplateSelector"/> or <see cref="ChatView.MessageTemplate"/> takes
+    /// precedence - the built-in selector is only installed when neither is set.
+    /// </summary>
+    public bool ShowChoiceButtons
+    {
+        get => (bool)GetValue(ShowChoiceButtonsProperty);
+        set => SetValue(ShowChoiceButtonsProperty, value);
+    }
+
+    public static readonly BindableProperty ChoiceSendTextProperty = BindableProperty.Create(
+        nameof(ChoiceSendText), typeof(string), typeof(AiChatView), "Send"
+    );
+
+    /// <summary>Label of the commit button shown for questions that allow more than one choice.</summary>
+    public string ChoiceSendText
+    {
+        get => (string)GetValue(ChoiceSendTextProperty);
+        set => SetValue(ChoiceSendTextProperty, value);
+    }
+
     public static readonly BindableProperty GreetingMessageProperty = BindableProperty.Create(
         nameof(GreetingMessage), typeof(string), typeof(AiChatView), null,
         propertyChanged: OnSettingChanged
@@ -223,6 +257,7 @@ public class AiChatView : ChatView
 
         this.SyncSettings();
         this.ApplyMicrophoneAction();
+        this.ApplyChoiceTemplate();
         this.EnsureProvider();
     }
 
@@ -249,9 +284,34 @@ public class AiChatView : ChatView
         this.settings.UserBubbleColor = this.UserBubbleColor;
         this.settings.LoadHistory = this.LoadHistory;
         this.settings.ShowTokenUsage = this.ShowTokenUsage;
+        this.settings.ShowChoiceButtons = this.ShowChoiceButtons;
         this.settings.GreetingMessage = this.GreetingMessage;
         this.settings.NotifyChanged();
     }
+
+    void ApplyChoiceTemplate()
+    {
+        if (!this.ShowChoiceButtons)
+        {
+            if (this.MessageTemplateSelector is AiChoiceTemplateSelector)
+                this.MessageTemplateSelector = null;
+
+            return;
+        }
+
+        // Never stomp a consumer-supplied template - they own the bubble in that case, and can still
+        // read the choices off ChatMessage.Metadata via AiChoiceTemplateSelector.ReadQuestions.
+        if (this.MessageTemplateSelector is null && this.MessageTemplate is null)
+            this.MessageTemplateSelector = new AiChoiceTemplateSelector(this);
+    }
+
+    /// <summary>
+    /// Routes a tapped choice into the live session as the user's answer.
+    /// </summary>
+    internal Task SendChoiceAnswerAsync(string answer)
+        => this.Provider is AiChatSessionProvider { Current: { } session }
+            ? session.SendChoiceAnswerAsync(answer)
+            : Task.CompletedTask;
 
     void RebuildProvider()
     {

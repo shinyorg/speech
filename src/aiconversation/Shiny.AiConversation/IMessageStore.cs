@@ -9,13 +9,16 @@ namespace Shiny.AiConversation;
 public interface IMessageStore
 {
     /// <summary>
-    /// Allows storing additional metadata about a chat response, such as tool calls or follow-up actions.
+    /// Persists a completed exchange. Implementations should store <paramref name="assistantMessage"/>
+    /// as the AI's message text - when structured output is in play, <c>response.Text</c> is the raw
+    /// JSON envelope and persisting that would feed JSON back into future prompts and chat history.
+    /// The full <paramref name="response"/> is still supplied for metadata such as token usage.
     /// </summary>
-    /// <param name="userTriggeringMessage"></param>
-    /// <param name="response"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    Task Store(string? userTriggeringMessage, ChatResponse response, CancellationToken cancellationToken);
+    /// <param name="userTriggeringMessage">The user message that prompted the response, if any.</param>
+    /// <param name="assistantMessage">The AI's display text - the parsed reply, or the raw text when unstructured.</param>
+    /// <param name="response">The underlying response, for usage and any other provider metadata.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    Task Store(string? userTriggeringMessage, string? assistantMessage, ChatResponse response, CancellationToken cancellationToken);
     
     /// <summary>
     /// Clears messages from the store. If <paramref name="beforeDate"/> is specified,

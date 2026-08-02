@@ -7,8 +7,8 @@ namespace Shiny;
 public static class AudioServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the platform audio capture (<see cref="IAudioSource"/>) and playback
-    /// (<see cref="IAudioPlayer"/>) services.
+    /// Registers the platform audio capture (<see cref="IAudioSource"/>), playback
+    /// (<see cref="IAudioPlayer"/>) and recording (<see cref="IAudioRecorder"/>) services.
     /// </summary>
     public static IServiceCollection AddAudioServices(this IServiceCollection services)
     {
@@ -16,7 +16,8 @@ public static class AudioServiceCollectionExtensions
             .AddAudioSource()
             .AddAudioPlayer()
             .AddAudioMonitor()
-            .AddAudioDevices();
+            .AddAudioDevices()
+            .AddAudioRecorder();
 
         // One-stop discovery facade over the focused services above (which remain injectable directly).
         services.TryAddSingleton<IAudio, AudioFacade>();
@@ -50,6 +51,21 @@ public static class AudioServiceCollectionExtensions
         if (OperatingSystem.IsBrowser())
             services.TryAddSingleton<IAudioPlayer, BrowserAudioPlayer>();
 #endif
+        return services;
+    }
+
+    /// <summary>
+    /// Registers WAV recording (<see cref="IAudioRecorder"/>). Platform-agnostic — it builds on
+    /// whatever <see cref="IAudioSource"/> is registered, so it works everywhere capture does,
+    /// including Linux via <c>AddLinuxAudio()</c>.
+    /// </summary>
+    /// <remarks>
+    /// Transient, matching <see cref="IAudioSource"/>: a recorder owns one capture session, so each
+    /// recording gets its own.
+    /// </remarks>
+    public static IServiceCollection AddAudioRecorder(this IServiceCollection services)
+    {
+        services.TryAddTransient<IAudioRecorder, AudioRecorder>();
         return services;
     }
 

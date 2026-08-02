@@ -27,7 +27,22 @@ public interface IAudioSource : IAsyncDisposable
     /// mic caps capture at 8 kHz narrowband.
     /// </para>
     /// </param>
-    Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default);
+    Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+        => this.StartCaptureAsync(new AudioCaptureOptions { Processing = processing }, cancellationToken);
+
+    /// <summary>
+    /// Start capturing audio from the microphone, optionally running it through a live DSP effect
+    /// chain (pitch, echo, reverb, filters). Returns a stream of PCM audio data (16kHz, 16-bit, mono).
+    /// </summary>
+    /// <param name="options">
+    /// Platform voice processing plus an optional <see cref="AudioEffectChain"/>. Hold on to the
+    /// chain — toggling effects and moving their parameters applies live, without restarting capture.
+    /// </param>
+    /// <remarks>
+    /// This parameter deliberately has no default value: an overload callable with no arguments
+    /// would make the existing <c>StartCaptureAsync(cancellationToken: token)</c> calls ambiguous.
+    /// </remarks>
+    Task<Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stop capturing audio.

@@ -20,7 +20,7 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
     const int ChunkBytes = SampleRate / 50 * 2 * ChannelCount;
 
     PcmStream? stream;
-    PipeStream? pipe;
+    CaptureSink? sink;
     Thread? captureThread;
     CancellationTokenSource? cts;
 
@@ -31,25 +31,27 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
         PcmStream.Backend == LinuxAudioBackend.None ? AccessState.NotSupported : AccessState.Available
     );
 
-    public Task<Stream> StartCaptureAsync(AudioProcessingOptions? processing = null, CancellationToken cancellationToken = default)
+    public Task<Stream> StartCaptureAsync(AudioCaptureOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         if (this.stream != null)
             throw new InvalidOperationException("Capture is already running. Call StopCaptureAsync() first.");
 
-        var device = ResolveCaptureDevice(processing);
+        var device = ResolveCaptureDevice(options.Processing);
         this.stream = PcmStream.OpenCapture(SampleRate, ChannelCount, device);
-        this.pipe = new PipeStream();
+        this.sink = new CaptureSink(options, level => this.InputLevelChanged?.Invoke(this, level), SampleRate);
 
         // Linked so cancelling the caller's token ends capture, as well as StopCaptureAsync().
         this.cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         var token = this.cts.Token;
         var pcm = this.stream;
-        var sink = this.pipe;
+        var target = this.sink;
 
         // A dedicated thread, not the thread pool: both backends block in native code for the whole
         // capture session, which would pin a pool thread for the duration.
-        this.captureThread = new Thread(() => this.Pump(pcm, sink, token))
+        this.captureThread = new Thread(() => this.Pump(pcm, target, token))
         {
             IsBackground = true,
             Name = "Shiny.Audio Linux capture"
@@ -57,13 +59,12 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
         this.captureThread.Start();
 
         logger.LogDebug("Linux audio capture started on {Backend} (device: {Device})", PcmStream.Backend, device ?? "default");
-        return Task.FromResult<Stream>(this.pipe);
+        return Task.FromResult(this.sink.Stream);
     }
 
-    void Pump(PcmStream pcm, PipeStream sink, CancellationToken token)
+    void Pump(PcmStream pcm, CaptureSink sink, CancellationToken token)
     {
         var buffer = new byte[ChunkBytes];
-        var throttle = new AudioLevelThrottle();
 
         try
         {
@@ -73,10 +74,8 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
                 if (read <= 0)
                     continue;   // an xrun the backend already recovered from
 
-                if (throttle.TryEmit(AudioLevel.FromPcm16(buffer.AsSpan(0, read)), out var level))
-                    this.InputLevelChanged?.Invoke(this, level);
-
-                sink.Write(buffer, 0, read);
+                if (!sink.Write(buffer, 0, read))
+                    break;      // consumer went away
             }
         }
         catch (ObjectDisposedException)
@@ -123,8 +122,8 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
             this.captureThread = null;
         }
 
-        this.pipe?.Dispose();
-        this.pipe = null;
+        this.sink?.Dispose();
+        this.sink = null;
 
         this.cts.Dispose();
         this.cts = null;

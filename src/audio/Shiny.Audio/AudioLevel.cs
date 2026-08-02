@@ -9,7 +9,8 @@ namespace Shiny.Audio;
 /// Every level event in this library (<see cref="IAudioSource.InputLevelChanged"/>,
 /// <see cref="IAudioMonitor.InputLevelChanged"/>, <see cref="IAudioPlayer.AudioLevelChanged"/>) is
 /// normalized through here, so input and output meters read on the same scale. Use it directly when
-/// you consume the raw PCM stream from <see cref="IAudioSource.StartCaptureAsync"/> yourself.
+/// you consume the raw PCM stream from
+/// <see cref="IAudioSource.StartCaptureAsync(AudioCaptureOptions, CancellationToken)"/> yourself.
 /// </remarks>
 public static class AudioLevel
 {

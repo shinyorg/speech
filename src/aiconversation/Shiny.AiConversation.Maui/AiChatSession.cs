@@ -154,7 +154,10 @@ sealed class AiChatSession : IChatSession
     void OnAiResponded(AiResponse response)
     {
         this.SetTyping(false);
-        if (response.Response.Text is not { } text || String.IsNullOrWhiteSpace(text))
+
+        // AiResponse.Text is the parsed reply when structured output is in play - Response.Text would be
+        // the raw JSON envelope.
+        if (response.Text is not { } text || String.IsNullOrWhiteSpace(text))
             return;
 
         var usage = response.Response.Usage;
@@ -162,7 +165,34 @@ sealed class AiChatSession : IChatSession
             ? AiChatTokens.AppendTokenFooter(text, usage?.InputTokenCount, usage?.OutputTokenCount, usage?.TotalTokenCount)
             : text;
 
-        this.Push(this.CreateMessage(AiChatSettings.BotId, body));
+        this.Push(this.CreateMessage(AiChatSettings.BotId, body, metadata: BuildChoiceMetadata(response, this.settings)));
+    }
+
+    static IReadOnlyDictionary<string, string>? BuildChoiceMetadata(AiResponse response, AiChatSettings settings)
+    {
+        if (!settings.ShowChoiceButtons)
+            return null;
+
+        var withChoices = response.Questions.Where(x => x.HasChoices).ToArray();
+        return withChoices.Length == 0
+            ? null
+            : new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [AiChoiceTemplateSelector.QuestionsMetadataKey] = AiTurnSerializer.SerializeQuestions(withChoices)
+            };
+    }
+
+    /// <summary>
+    /// Sends a tapped choice as the user's answer - the bubble is pushed here because the control only
+    /// creates one for text the user typed into the entry.
+    /// </summary>
+    internal Task SendChoiceAnswerAsync(string answer)
+    {
+        if (String.IsNullOrWhiteSpace(answer))
+            return Task.CompletedTask;
+
+        this.Push(this.CreateMessage(AiChatSettings.UserId, answer));
+        return this.TalkAsync(answer);
     }
 
     void OnSpeechOccurred(ConversationSpeech speech)
@@ -205,7 +235,13 @@ sealed class AiChatSession : IChatSession
 
     // ---- message helpers ----
 
-    ChatMessage CreateMessage(string senderId, string? body, string? clientMessageId = null, string? identifier = null)
+    ChatMessage CreateMessage(
+        string senderId,
+        string? body,
+        string? clientMessageId = null,
+        string? identifier = null,
+        IReadOnlyDictionary<string, string>? metadata = null
+    )
     {
         var now = DateTimeOffset.Now;
         var id = Guid.NewGuid().ToString("N");
@@ -223,7 +259,8 @@ sealed class AiChatSession : IChatSession
             EditedTimestamp: null,
             Reactions: [],
             ReadReceipts: [],
-            Identifier: identifier
+            Identifier: identifier,
+            Metadata: metadata
         );
     }
 
