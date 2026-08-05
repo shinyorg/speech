@@ -16,6 +16,9 @@
         <File Path=".github\ISSUE_TEMPLATE\feature_request.yml" />
         <File Path=".github\PULL_REQUEST_TEMPLATE.md" />
         <File Path=".github\workflows\build.yml" />
+        <File Path=".github\workflows\deploy-blazor-sample.yml" />
+        <File Path=".github\workflows\sync-aiconversation-skill.yml" />
+        <File Path=".github\workflows\sync-speech-skill.yml" />
         <File Path="Build.slnf" />
         <File Path="CLAUDE.md" />
         <File Path="Directory.Packages.props" />
