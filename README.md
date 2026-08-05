@@ -8,6 +8,9 @@ This repository is the home for two complementary library families:
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
 
+👉 **[Try the live Blazor WebAssembly playground](https://shinyorg.github.io/speech/)** — speech-to-text, text-to-speech, and
+the AI conversation loop running in the browser. Source: [`samples/BlazorSample`](samples/BlazorSample).
+
 ## Libraries
 
 | Package | Description | Targets |

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - v2
+      - v3
     paths:
       - 'samples/BlazorSample/**'
       - 'src/speech/**'
@@ -51,7 +51,13 @@ jobs:
 
       - name: Rewrite base href + add SPA fallback
         run: |
-          sed -i -E 's|<base href="/" ?/>|<base href="${{ env.BASE_HREF }}" />|g' publish/wwwroot/index.html
+          # perl instead of sed: the runner is macOS, and BSD sed's -i consumes the
+          # next argument as the backup extension, so "sed -i -E" silently ran in
+          # BRE mode (no rewrite) and left an index.html-E turd behind.
+          perl -pi -e 's|<base href="/"\s*/>|<base href="$ENV{BASE_HREF}" />|g' publish/wwwroot/index.html
+          # fail loudly rather than shipping a site whose every asset 404s
+          grep -qF '<base href="'"$BASE_HREF"'" />' publish/wwwroot/index.html \
+            || { echo "::error::base href rewrite failed"; cat publish/wwwroot/index.html; exit 1; }
           cp publish/wwwroot/index.html publish/wwwroot/404.html
           touch publish/wwwroot/.nojekyll
 
