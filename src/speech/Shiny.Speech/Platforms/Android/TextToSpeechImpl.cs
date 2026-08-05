@@ -103,6 +103,10 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
         options ??= new TextToSpeechOptions();
 
+        // The Android engine has no expressive control, so annotations are stripped rather than
+        // spoken aloud. Any Tone on the options is discarded for the same reason.
+        var spokenText = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None).Text;
+
         speakTcs = new TaskCompletionSource();
         var utteranceId = Guid.NewGuid().ToString();
         var listener = new UtteranceListener(speakTcs, logger, level => AudioLevelChanged?.Invoke(this, level));
@@ -139,7 +143,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
                 var bundle = new Android.OS.Bundle();
                 bundle.PutFloat(Android.Speech.Tts.TextToSpeech.Engine.KeyParamVolume, Math.Clamp(options.Volume, 0f, 1f));
 
-                tts!.Speak(text, QueueMode.Flush, bundle, utteranceId);
+                tts!.Speak(spokenText, QueueMode.Flush, bundle, utteranceId);
                 logger.LogDebug("Text-to-speech started");
             }
             catch (Exception ex)

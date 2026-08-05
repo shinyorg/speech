@@ -38,6 +38,7 @@
         <Project Path="src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj" />
         <Project Path="src/speech/Shiny.Speech.Typecast/Shiny.Speech.Typecast.csproj" />
         <Project Path="src/speech/Shiny.Speech/Shiny.Speech.csproj" />
+        <Project Path="src/speech/tests/Shiny.Speech.Tests/Shiny.Speech.Tests.csproj" />
         <File Path="skills\shiny-speech\SKILL.md" />
     </Folder>
     <Project Path="samples/BlazorSample/BlazorSample.csproj" />

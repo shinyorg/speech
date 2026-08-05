@@ -66,7 +66,11 @@ public partial class BrowserTextToSpeechService(ILogger<BrowserTextToSpeechServi
         var lang = options.Culture?.Name ?? "";
         var voiceUri = options.Voice?.Id ?? "";
 
-        Speak(text, lang, voiceUri, options.SpeechRate, options.Pitch, options.Volume);
+        // The Web Speech API has no expressive control, so annotations are stripped rather than
+        // spoken aloud. Any Tone on the options is discarded for the same reason.
+        var spokenText = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None).Text;
+
+        Speak(spokenText, lang, voiceUri, options.SpeechRate, options.Pitch, options.Volume);
         logger.LogDebug("Browser TTS started");
 
         cancellationToken.Register(() =>

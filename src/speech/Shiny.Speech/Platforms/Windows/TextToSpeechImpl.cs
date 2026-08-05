@@ -62,7 +62,11 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         synthesizer.Options.AudioPitch = Math.Clamp((double)options.Pitch, 0.5, 2.0);
         synthesizer.Options.AudioVolume = Math.Clamp((double)options.Volume, 0.0, 1.0);
 
-        var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
+        // The Windows synthesizer has no expressive control, so annotations are stripped rather
+        // than spoken aloud. Any Tone on the options is discarded for the same reason.
+        var resolved = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None);
+
+        var stream = await synthesizer.SynthesizeTextToStreamAsync(resolved.Text);
         var tcs = new TaskCompletionSource();
 
         mediaPlayer = new MediaPlayer();

@@ -89,7 +89,10 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
 
     AVSpeechUtterance BuildUtterance(string text, TextToSpeechOptions options)
     {
-        var utterance = new AVSpeechUtterance(text);
+        // AVSpeechSynthesizer has no expressive control, so annotations are stripped rather than
+        // spoken aloud. Any Tone on the options is discarded for the same reason.
+        var resolved = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None);
+        var utterance = new AVSpeechUtterance(resolved.Text);
 
         if (options.Voice != null)
             utterance.Voice = AVSpeechSynthesisVoice.FromIdentifier(options.Voice.Id);

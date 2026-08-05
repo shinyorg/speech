@@ -10,6 +10,13 @@ public class AzureTextToSpeechProvider(
     ILogger<AzureTextToSpeechProvider> logger
 ) : ITextToSpeechProvider
 {
+    /// <summary>
+    /// Azure expresses emotion through SSML <c>mstts:express-as</c>, so inline annotations are
+    /// stripped from the text and promoted into <c>style</c> / <c>styledegree</c>.
+    /// </summary>
+    public SpeechToneCapabilities ToneCapabilities
+        => SpeechToneCapabilities.Emotion | SpeechToneCapabilities.Intensity;
+
     public async Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(CultureInfo? culture = null, CancellationToken cancellationToken = default)
     {
         var speechConfig = SpeechConfig.FromSubscription(config.SubscriptionKey, config.Region);
@@ -49,11 +56,22 @@ public class AzureTextToSpeechProvider(
         var pitchPercent = ((options.Pitch - 1.0f) * 100).ToString("+0;-0;+0");
         var volumeValue = (int)(options.Volume * 100);
 
+        var resolved = SpeechAnnotations.Resolve(text, options, this.ToneCapabilities);
+        var body = System.Security.SecurityElement.Escape(resolved.Text);
+
+        // Only wrap when a style actually maps — an unstyled utterance keeps the plain SSML shape.
+        if (AzureStyleMap.From(resolved.Tone?.Emotion) is { } style)
+        {
+            // styledegree is 0.01–2, where 1 is the voice's normal expressiveness for that style.
+            var degree = Math.Clamp(resolved.Tone!.Intensity, 0.01f, 2f);
+            body = $"""<mstts:express-as style="{style}" styledegree="{degree.ToString("0.##", CultureInfo.InvariantCulture)}">{body}</mstts:express-as>""";
+        }
+
         var ssml = $"""
-            <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{options.Culture?.Name ?? "en-US"}">
+            <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="{options.Culture?.Name ?? "en-US"}">
                 <voice name="{voiceName}">
                     <prosody rate="{ratePercent}%" pitch="{pitchPercent}%" volume="{volumeValue}">
-                        {System.Security.SecurityElement.Escape(text)}
+                        {body}
                     </prosody>
                 </voice>
             </speak>

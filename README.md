@@ -129,6 +129,53 @@ public class MyService(ITextToSpeechService tts)
 }
 ```
 
+### Emotion & Tone
+
+Expressive TTS engines expose emotion in incompatible ways — ElevenLabs v3 reads inline audio tags
+(`[excited]`) out of the text, Typecast takes an `emotion_preset` field, Azure uses SSML
+`mstts:express-as`, and OpenAI takes a free-text `instructions` string. `SpeechTone` is the portable
+form; every provider projects it onto whatever it actually supports, and providers with no
+expressive control ignore it:
+
+```csharp
+await tts.SpeakAsync("We just shipped it.", new TextToSpeechOptions
+{
+    Tone = new SpeechTone
+    {
+        Emotion = SpeechEmotion.Excited,
+        Intensity = 1.5f,                                    // Typecast emotion_intensity / Azure styledegree
+        Instructions = "Sound like you're sharing good news." // OpenAI instructions
+    }
+});
+```
+
+Bracketed annotations in the text are handled too. Because only ElevenLabs' `eleven_v3` performs
+them — every other engine, including older ElevenLabs models, reads them aloud verbatim — the
+default `SpeechAnnotationHandling.Auto` promotes the first emotion tag to a `SpeechTone` and then
+strips the tags for any provider that can't perform them:
+
+```csharp
+// Speaks the tags as direction on eleven_v3; everywhere else says "We just shipped it. Everything is live."
+// with the closest available emotion applied.
+await tts.SpeakAsync("[excited] We just shipped it. [laughs] Everything is live.");
+```
+
+That makes LLM-authored speech portable — let the model write tags and whatever provider is wired up
+does the right thing. Use `AnnotationHandling = SpeechAnnotationHandling.Preserve` when the text
+legitimately contains square brackets, or `Strip` to remove them unconditionally.
+
+| Provider | Mechanism | Notes |
+| --- | --- | --- |
+| ElevenLabs | Inline audio tags | Only on `eleven_v3`; capabilities derive from `TextToSpeechModel`, so older models strip |
+| Typecast | `emotion_preset` + `emotion_intensity` | Preset vocabulary is small, so the mapping is lossy; `TypecastConfig.Emotion` is the fallback |
+| Azure | `mstts:express-as style` + `styledegree` | Style support is per-voice; unsupported styles render in the default delivery |
+| OpenAI | `instructions` | Needs an instruction-aware model such as `gpt-4o-mini-tts` |
+| iOS / Android / Windows / Browser | none | Annotations stripped, tone discarded |
+
+Custom providers report what they support via `ITextToSpeechProvider.ToneCapabilities` (defaulting
+to `SpeechToneCapabilities.None`) and call `SpeechAnnotations.Resolve(text, options, ToneCapabilities)`
+to get back the text and tone to actually use.
+
 ### Playing Audio (`IAudioPlayer`)
 
 `IAudioPlayer` plays a `Stream`, or — via `PlayAsync(string)` — a **remote URL or a local file path**.

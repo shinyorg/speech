@@ -6,6 +6,7 @@
             "src/audio/Shiny.Audio.Linux/Shiny.Audio.Linux.csproj",
             "src/audio/tests/Shiny.Audio.Tests/Shiny.Audio.Tests.csproj",
             "src/speech/Shiny.Speech/Shiny.Speech.csproj",
+            "src/speech/tests/Shiny.Speech.Tests/Shiny.Speech.Tests.csproj",
             "src/speech/Shiny.Speech.MicrosoftAI/Shiny.Speech.MicrosoftAI.csproj",
             "src/speech/Shiny.Speech.OpenAI/Shiny.Speech.OpenAI.csproj",
             "src/speech/Shiny.Speech.Cloud/Shiny.Speech.Cloud.csproj",

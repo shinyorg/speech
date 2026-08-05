@@ -14,6 +14,17 @@ public class ElevenLabsTextToSpeechProvider(
     // Rebuilds the HttpClient (which bakes in the xi-api-key header) if config.ApiKey changes at runtime.
     readonly RefreshableClient<HttpClient> http = new(() => CreateHttpClient(config));
 
+    /// <summary>
+    /// Audio tags are an Eleven v3 feature. Older models (multilingual v2, turbo, flash) read them
+    /// aloud as text, so capabilities are derived from the configured model rather than hardcoded —
+    /// switching <see cref="ElevenLabsConfig.TextToSpeechModel"/> automatically switches annotation
+    /// handling between "perform" and "strip".
+    /// </summary>
+    public SpeechToneCapabilities ToneCapabilities
+        => config.TextToSpeechModel.StartsWith("eleven_v3", StringComparison.OrdinalIgnoreCase)
+            ? SpeechToneCapabilities.InlineAnnotations
+            : SpeechToneCapabilities.None;
+
     static HttpClient CreateHttpClient(ElevenLabsConfig config)
     {
         var client = new HttpClient
@@ -61,9 +72,13 @@ public class ElevenLabsTextToSpeechProvider(
         var httpClient = this.http.Get(config.ApiKey);
         var voiceId = options.Voice?.Id ?? config.DefaultVoiceId;
 
+        // On v3 this leaves audio tags in place (and prepends one for an explicit Tone); on every
+        // older model it strips them so they aren't spoken aloud.
+        var resolved = SpeechAnnotations.Resolve(text, options, this.ToneCapabilities);
+
         var requestBody = new TtsRequest
         {
-            Text = text,
+            Text = resolved.Text,
             ModelId = config.TextToSpeechModel,
             VoiceSettings = new VoiceSettings
             {

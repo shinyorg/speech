@@ -18,6 +18,13 @@ public class TypecastTextToSpeechProvider(
     // Rebuilds the underlying client if config.ApiKey is changed at runtime.
     readonly RefreshableClient<TypecastClient> client = new(() => new TypecastClient(config.ApiKey));
 
+    /// <summary>
+    /// Typecast takes emotion out of band via the <c>prompt</c> object, so inline annotations are
+    /// stripped from the text and promoted into <c>emotion_preset</c> / <c>emotion_intensity</c>.
+    /// </summary>
+    public SpeechToneCapabilities ToneCapabilities
+        => SpeechToneCapabilities.Emotion | SpeechToneCapabilities.Intensity;
+
     public async Task<IReadOnlyList<VoiceInfo>> GetVoicesAsync(
         CultureInfo? culture = null,
         CancellationToken cancellationToken = default)
@@ -49,7 +56,9 @@ public class TypecastTextToSpeechProvider(
                 "No Typecast voice specified. Set TypecastConfig.DefaultVoiceId or TextToSpeechOptions.Voice " +
                 "(call GetVoicesAsync to discover voice ids for your account).");
 
-        var request = new TTSRequest(text, voiceId, config.Model)
+        var resolved = SpeechAnnotations.Resolve(text, options, this.ToneCapabilities);
+
+        var request = new TTSRequest(resolved.Text, voiceId, config.Model)
         {
             Language = config.Language,
             Output = new Output
@@ -60,8 +69,16 @@ public class TypecastTextToSpeechProvider(
             }
         };
 
-        if (config.Emotion is { } emotion)
-            request.Prompt = new Prompt(emotion, config.EmotionIntensity);
+        // A per-utterance tone wins; config.Emotion is the fallback for calls that don't set one.
+        var preset = TypecastEmotionMap.From(resolved.Tone?.Emotion) ?? config.Emotion;
+        if (preset is { } emotion)
+        {
+            double? intensity = resolved.Tone != null
+                ? Math.Clamp(resolved.Tone.Intensity, 0f, 2f)
+                : config.EmotionIntensity;
+
+            request.Prompt = new PresetPrompt(emotion, intensity);
+        }
 
         logger.LogDebug("Synthesizing speech via Typecast using voice {Voice}", voiceId);
         var response = await client.Get(config.ApiKey).TextToSpeechAsync(request, cancellationToken);
