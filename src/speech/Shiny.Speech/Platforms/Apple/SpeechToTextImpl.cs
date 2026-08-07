@@ -20,6 +20,11 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
     TimeSpan silenceTimeout;
     bool preferOnDevice;
 
+    // Consecutive recoverable errors since the last result. A hard error ends the underlying
+    // SFSpeechRecognitionTask, so without re-arming the mic stays open and nothing is ever
+    // recognized again — the session looks alive and is not. See SpeechRetryPolicy.
+    int consecutiveErrors;
+
     // Dedup state — suppress KeywordHeard re-fires from trailing-audio carry-over.
     // SFSpeechRecognizer can deliver a final result with the previous best-guess text
     // when a re-armed task receives only silence or the tail of the prior utterance.
@@ -88,6 +93,13 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             this.preferOnDevice = options.PreferOnDevice;
             this.lastKeywordFinalText = null;
             this.lastKeywordFinalTime = default;
+            this.consecutiveErrors = 0;
+
+            // Recognition has always run through Apple's voice-processing chain here, which is the
+            // right default for a mic that is open while the app is speaking. Callers who need the
+            // raw signal (or no Bluetooth route) now say so with AudioProcessingOptions, exactly as
+            // they would for AppleAudioSource.
+            var processing = options.AudioProcessing ?? AudioProcessingOptions.VoiceChat;
 
             var locale = options.Culture != null
                 ? new NSLocale(options.Culture.Name)
@@ -101,19 +113,33 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
 #if !MACOS
             var audioSession = AVAudioSession.SharedInstance();
+
+            // A Bluetooth mic runs over HFP, which caps capture at 8 kHz narrowband — fine for
+            // dictation, not for anything measuring the signal. Same opt-out as AppleAudioSource.
+            var categoryOptions = AVAudioSessionCategoryOptions.DefaultToSpeaker;
+            if (processing.AllowBluetooth)
+            {
+                categoryOptions |= AVAudioSessionCategoryOptions.AllowBluetooth
+                    | AVAudioSessionCategoryOptions.AllowBluetoothA2DP;
+            }
+
             audioSession.SetCategory(
                 AVAudioSessionCategory.PlayAndRecord,
-                AVAudioSessionCategoryOptions.AllowBluetooth
-                    | AVAudioSessionCategoryOptions.AllowBluetoothA2DP
-                    | AVAudioSessionCategoryOptions.DefaultToSpeaker,
+                categoryOptions,
                 out var categoryError
             );
             if (categoryError != null)
                 throw new InvalidOperationException($"Failed to set audio session category: {categoryError.LocalizedDescription}");
 
-            audioSession.SetMode(AVAudioSessionMode.VoiceChat.GetConstant()!, out var modeError);
+            // VoiceChat engages Apple's AEC/NS/AGC chain at the session level; Measurement is the
+            // mode that asks iOS to apply as little input processing as it can.
+            var mode = processing.AnyEnabled
+                ? AVAudioSessionMode.VoiceChat
+                : AVAudioSessionMode.Measurement;
+
+            audioSession.SetMode(mode.GetConstant()!, out var modeError);
             if (modeError != null)
-                logger.LogWarning("Failed to set audio session mode to VoiceChat: {Error}", modeError.LocalizedDescription);
+                logger.LogWarning("Failed to set audio session mode to {Mode}: {Error}", mode, modeError.LocalizedDescription);
 
             audioSession.SetActive(true, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out var activeError);
             if (activeError != null)
@@ -121,6 +147,17 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 #endif
 
             var inputNode = this.audioEngine.InputNode;
+
+            // Apple's voice-processing I/O unit bundles AEC + noise suppression + AGC and cannot
+            // toggle them independently, so any requested effect enables the whole chain. Must be
+            // set before the engine is prepared, otherwise the input format is already locked.
+            if (processing.AnyEnabled)
+            {
+                if (!inputNode.SetVoiceProcessingEnabled(true, out var voiceProcessingError))
+                    logger.LogWarning("Failed to enable voice processing (AEC/NS/AGC): {Error}", voiceProcessingError?.LocalizedDescription);
+            }
+
+            // Read the mic format only after voice processing is applied, since it alters it.
             var recordingFormat = inputNode.GetBusOutputFormat(0);
 
             // Install the tap once for the lifetime of the session. The audio engine + tap stay
@@ -227,11 +264,33 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
                     error.LocalizedDescription,
                     new InvalidOperationException(error.LocalizedDescription)
                 ));
+
+                // The task is finished either way. Reporting and returning would leave the mic open
+                // with nothing consuming it — IsListening stays true and the caller has no way to
+                // tell the session is dead — so re-arm behind a backoff instead, and only give up
+                // when the failures keep coming.
+                this.consecutiveErrors++;
+
+                if (SpeechRetryPolicy.ShouldGiveUp(this.consecutiveErrors))
+                {
+                    logger.LogError(
+                        "Speech recognition stopped after {Count} consecutive errors, the last being {Error}",
+                        this.consecutiveErrors,
+                        error.LocalizedDescription
+                    );
+                    _ = this.Stop();
+                    return;
+                }
+
+                this.ReArmAfter(SpeechRetryPolicy.GetBackoff(this.consecutiveErrors));
                 return;
             }
         }
         else if (result != null)
         {
+            // A result means the loop is healthy again - forgive whatever failed before it.
+            this.consecutiveErrors = 0;
+
             var text = result.BestTranscription.FormattedString;
             var isFinal = result.Final;
 
@@ -275,6 +334,28 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
             this.StartRecognitionTaskLocked();
         }
         logger.LogDebug("Recognition task re-armed (keep-mic-open)");
+    }
+
+    /// <summary>
+    /// Re-arms recognition once <paramref name="delay"/> has passed, provided the session has not
+    /// been stopped in the meantime. The audio engine and its tap stay up throughout, so the mic
+    /// never closes — only the SFSpeechRecognitionTask in front of it is replaced.
+    /// </summary>
+    void ReArmAfter(TimeSpan delay)
+    {
+        logger.LogWarning("Re-arming speech recognition in {Backoff} (attempt {Count})", delay, this.consecutiveErrors);
+
+        _ = Task.Delay(delay).ContinueWith(_ =>
+        {
+            lock (this.stateLock)
+            {
+                if (!this.IsListening)
+                    return;
+
+                this.StartRecognitionTaskLocked();
+            }
+            logger.LogDebug("Recognition task re-armed after error");
+        });
     }
 
     void ResetSilenceTimer(TimeSpan timeout)

@@ -13,6 +13,9 @@
         <DefineConstants>$(DefineConstants);PLATFORM</DefineConstants>
         <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
         <TargetPlatformVersion>36</TargetPlatformVersion>
+        <!-- Packed into the generated .aar and merged into consuming apps - it carries the
+             <queries> declaration SpeechRecognizer needs to be discoverable on API 30+ -->
+        <AndroidManifest>Platforms/Android/AndroidManifest.xml</AndroidManifest>
     </PropertyGroup>
 
     <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Merged into every consuming app.
+
+    SpeechRecognizer.isRecognitionAvailable() resolves the recognition service through
+    PackageManager.queryIntentServices, which is subject to package visibility filtering from
+    API 30 onwards. Without this <queries> declaration that lookup returns false on any modern
+    device, ISpeechToTextService.IsSupported is false and RequestAccess() returns
+    AccessState.NotSupported before the microphone permission is ever requested - which reads
+    like "speech recognition is broken" rather than "the manifest is missing a declaration".
+
+    Declared here so consumers do not each have to rediscover it. No permissions are declared:
+    RECORD_AUDIO is a dangerous permission and would surface in the store listing of an app that
+    only uses text-to-speech, so it stays the app's to opt into.
+-->
+<!-- The package attribute is required for this manifest to be packed into the library's .aar at
+     all (CreateAar skips a manifest without one). It names the library, not the consuming app -
+     the app's own package survives the merge. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="net.shinylib.speech">
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+</manifest>

@@ -513,13 +513,48 @@ public class MyService(ISpeechToTextService stt) : IDisposable
 }
 ```
 
+#### Continuous sessions and recovery
+
+`Start()` opens the microphone and keeps it open. Both native recognizers are single-utterance
+underneath, so the service re-arms them for you after every final result — you start once and stay
+listening until you call `Stop()`.
+
+Transient failures in that loop (the mic taken by another capture, a busy recognizer, a dropped
+network round trip) no longer end the session. The service reports them through `Error` and re-arms
+behind a backoff — 250ms, then doubling to a 4 second ceiling — resetting the moment a result comes
+back. After `SpeechRetryPolicy.MaxConsecutiveFailures` (5) failures in a row it stops the session
+rather than looping, so `IsListening` never reports `true` for a session that has quietly died.
+Errors that retrying cannot fix — a missing permission, an unsupported language — stop immediately.
+
+#### On-device recognition
+
+`PreferOnDevice` asks for recognition with no network round trip and no session length cap, which is
+what long continuous sessions and offline use want:
+
+```csharp
+await stt.Start(new SpeechRecognitionOptions { PreferOnDevice = true });
+```
+
+It is best-effort on every platform. iOS sets `RequiresOnDeviceRecognition` when the locale supports
+it; Android uses the on-device recognizer when the device has one installed (API 31+) and otherwise
+falls back to the system recognizer with the offline hint set. A device without local recognition
+stays on the network path rather than failing.
+
 ### Voice Processing (Noise Suppression & Echo Cancellation)
 
 Microphone capture can request platform voice-processing effects to strip background noise and,
 critically, to **cancel your text-to-speech output from the mic** so it isn't re-captured while the
 mic is open (barge-in). Configure it via `AudioProcessingOptions` — either directly on
-`IAudioSource.StartCaptureAsync(...)` or through `SpeechRecognitionOptions.AudioProcessing` (honored
-by the cloud providers, which capture through `IAudioSource`):
+`IAudioSource.StartCaptureAsync(...)` or through `SpeechRecognitionOptions.AudioProcessing`, which is
+honored wherever the capture belongs to Shiny: every cloud provider (they record through
+`IAudioSource`) and the **native iOS / Mac Catalyst / macOS recognizer**, which owns its own
+`AVAudioEngine`. Leaving it `null` keeps the default those paths have always used — the full
+`VoiceChat` chain — rather than raw capture.
+
+> **Ignored on Android.** Recognition there runs in the platform's own out-of-process
+> `SpeechRecognizer` service, which opens the microphone itself and exposes no voice-processing
+> controls, so there is no capture session to apply this to. Setting it logs a warning. Use a cloud
+> provider if the recognition path needs these effects on Android.
 
 ```csharp
 await stt.Start(new SpeechRecognitionOptions
@@ -755,6 +790,21 @@ Add to `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
 `MODIFY_AUDIO_SETTINGS` is required for the TTS audio-level Visualizer and for the native STT beep suppression.
+
+Nothing else is needed. `Shiny.Speech` ships its own library manifest carrying the `<queries>`
+declaration that makes the platform recognition service visible on API 30+, and it merges into your
+app automatically:
+
+```xml
+<queries>
+    <intent><action android:name="android.speech.RecognitionService" /></intent>
+</queries>
+```
+
+Without it, package visibility filtering hides the recognition service, `IsSupported` is `false` and
+`RequestAccess()` returns `AccessState.NotSupported` before the microphone permission is ever
+requested. Permissions are deliberately *not* declared by the library — `RECORD_AUDIO` is a dangerous
+permission and would surface in the store listing of an app that only uses text-to-speech.
 
 ---
 
