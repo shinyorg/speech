@@ -15,6 +15,10 @@ public class CloudTextToSpeech : ITextToSpeechService
     readonly IAudioPlayer audioPlayer;
     readonly ILogger<CloudTextToSpeech> logger;
 
+    // The player can run several clips at once, so hold onto the utterance we started: speaking and
+    // stopping then apply to this service's audio only, and never to whatever else the app is playing.
+    IAudioPlayback? utterance;
+
     public CloudTextToSpeech(
         ITextToSpeechProvider provider,
         IAudioPlayer audioPlayer,
@@ -29,7 +33,7 @@ public class CloudTextToSpeech : ITextToSpeechService
     }
 
     public bool IsSupported => true;
-    public bool IsSpeaking => audioPlayer.IsPlaying;
+    public bool IsSpeaking => this.utterance?.IsPlaying ?? false;
     public bool IsPlayerAnalysisSupported => audioPlayer.IsPlayerAnalysisSupported;
     public bool CanSynthesizeToStream => true;
     public event EventHandler<double>? AudioLevelChanged;
@@ -48,7 +52,18 @@ public class CloudTextToSpeech : ITextToSpeechService
         var audioStream = await provider.SynthesizeAsync(text, options, cancellationToken);
 
         logger.LogDebug("Playing synthesized audio");
-        await audioPlayer.PlayAsync(audioStream, cancellationToken);
+        var playback = await audioPlayer.StartAsync(audioStream, cancellationToken);
+        this.utterance = playback;
+
+        try
+        {
+            await playback.Completion;
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref this.utterance, null, playback);
+            await playback.DisposeAsync();
+        }
 
         logger.LogDebug("Cloud text-to-speech completed");
     }
@@ -59,5 +74,9 @@ public class CloudTextToSpeech : ITextToSpeechService
         return provider.SynthesizeAsync(text, options, cancellationToken);
     }
 
-    public Task StopAsync() => audioPlayer.StopAsync();
+    public Task StopAsync()
+    {
+        var playback = Interlocked.Exchange(ref this.utterance, null);
+        return playback?.StopAsync() ?? Task.CompletedTask;
+    }
 }

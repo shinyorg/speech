@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Shiny.Audio.Infrastructure;
 using Shiny.Audio.Interop;
 
 namespace Shiny.Audio;
@@ -15,11 +16,8 @@ namespace Shiny.Audio;
 public class LinuxAudioPlayer : IAudioPlayer, IDisposable
 {
     readonly ILogger<LinuxAudioPlayer> logger;
+    readonly AudioPlaybackRegistry playbacks = new();
     readonly Lock sync = new();
-
-    PcmStream? stream;
-    CancellationTokenSource? cts;
-    Task? playbackTask;
 
     IDisposable? volumeSubscription;
     float lastKnownVolume = 1f;
@@ -29,70 +27,102 @@ public class LinuxAudioPlayer : IAudioPlayer, IDisposable
         this.logger = logger;
     }
 
-    public bool IsPlaying { get; private set; }
+    public bool IsPlaying => this.playbacks.IsPlaying;
+
+    public IReadOnlyList<IAudioPlayback> Active => this.playbacks.Active;
 
     /// <summary>Always true — playback runs through managed PCM, so every sample can be metered.</summary>
     public bool IsPlayerAnalysisSupported => true;
 
     public event EventHandler<double>? AudioLevelChanged;
 
-    public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    public Task<IAudioPlayback> StartAsync(Stream audioStream, CancellationToken cancellationToken = default)
+        => this.StartCoreAsync(audioStream, null, cancellationToken);
+
+    public async Task<IAudioPlayback> StartAsync(string source, CancellationToken cancellationToken = default)
+    {
+        // There is no native player to hand a URL to, so resolve it to a stream and decode as usual.
+        if (string.IsNullOrWhiteSpace(source))
+            throw new ArgumentException("Source must be a non-empty URL or file path.", nameof(source));
+
+        if (PlaybackSource.IsRemote(source))
+        {
+            var bytes = await PlaybackSource.DownloadAsync(source, cancellationToken).ConfigureAwait(false);
+            using var ms = new MemoryStream(bytes);
+            return await this.StartCoreAsync(ms, source, cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var fs = File.OpenRead(source);
+        return await this.StartCoreAsync(fs, source, cancellationToken).ConfigureAwait(false);
+    }
+
+    async Task<IAudioPlayback> StartCoreAsync(Stream audioStream, string? source, CancellationToken cancellationToken)
     {
         var decoded = await AudioDecoder.DecodeAsync(audioStream, cancellationToken).ConfigureAwait(false);
+        var playback = this.playbacks.Create(source);
+
         if (decoded.Pcm.Length == 0)
-            return;
+        {
+            // Nothing to play — hand back an already-finished handle so callers can await it uniformly.
+            await playback.StopAsync().ConfigureAwait(false);
+            return playback;
+        }
 
-        await this.StopAsync().ConfigureAwait(false);
-
+        // One backend stream per clip: PulseAudio/PipeWire mixes them, and so does ALSA through dmix.
         // Opened at the decoded file's own rate — the backend resamples to the hardware rate, so
         // there is no resampler in this library.
         var pcm = PcmStream.OpenPlayback(decoded.SampleRate, decoded.Channels, null);
-        var source = new CancellationTokenSource();
-
-        lock (this.sync)
-        {
-            this.stream = pcm;
-            this.cts = source;
-            this.IsPlaying = true;
-        }
+        var cts = new CancellationTokenSource();
 
         this.logger.LogDebug(
             "Linux audio playback started on {Backend} ({Rate}Hz, {Channels}ch, {Bytes} bytes)",
             PcmStream.Backend, decoded.SampleRate, decoded.Channels, decoded.Pcm.Length
         );
 
-        using var link = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, source.Token);
-        var token = link.Token;
-
         // Writes block in native code for the length of the clip, so keep them off the caller's thread.
         var task = Task.Factory.StartNew(
-            () => this.Pump(pcm, decoded, token),
-            token,
+            () => this.Pump(playback, pcm, decoded, cts.Token),
+            cts.Token,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default
         );
 
-        lock (this.sync)
-            this.playbackTask = task;
+        playback.OnStop(async () =>
+        {
+            await cts.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Cancellation, or a pump failure already surfaced through Fail below.
+            }
 
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Stop() or the caller's token — not an error.
-        }
-        finally
-        {
-            lock (this.sync)
-                this.IsPlaying = false;
+            pcm.Dispose();
+            cts.Dispose();
+            this.logger.LogDebug("Linux audio playback stopped");
+        });
 
-            this.logger.LogDebug("Linux audio playback finished");
-        }
+        _ = task.ContinueWith(
+            t =>
+            {
+                if (t.IsFaulted)
+                    playback.Fail(t.Exception!.GetBaseException());
+                else
+                    playback.Complete();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
+        // Linked last so an already-cancelled token tears down a fully constructed playback.
+        playback.CancelWith(cancellationToken);
+        return playback;
     }
 
-    void Pump(PcmStream pcm, DecodedAudio decoded, CancellationToken token)
+    void Pump(AudioPlayback playback, PcmStream pcm, DecodedAudio decoded, CancellationToken token)
     {
         // 20ms per write keeps cancellation responsive without thrashing the backend.
         var bytesPerFrame = decoded.Channels * 2;
@@ -106,8 +136,10 @@ public class LinuxAudioPlayer : IAudioPlayer, IDisposable
 
             var count = Math.Min(chunk, decoded.Pcm.Length - offset);
 
+            // Report through the registry so overlapping clips share one level stream showing the
+            // loudest of them.
             if (throttle.TryEmit(AudioLevel.FromPcm16(decoded.Pcm.AsSpan(offset, count)), out var level))
-                this.AudioLevelChanged?.Invoke(this, level);
+                this.AudioLevelChanged?.Invoke(this, this.playbacks.ReportLevel(playback, level));
 
             // A trailing partial frame would desynchronise the interleaving; drop it.
             count -= count % bytesPerFrame;
@@ -122,41 +154,7 @@ public class LinuxAudioPlayer : IAudioPlayer, IDisposable
             pcm.Drain();
     }
 
-    public async Task StopAsync()
-    {
-        CancellationTokenSource? source;
-        Task? task;
-        PcmStream? pcm;
-
-        lock (this.sync)
-        {
-            source = this.cts;
-            task = this.playbackTask;
-            pcm = this.stream;
-            this.cts = null;
-            this.playbackTask = null;
-            this.stream = null;
-        }
-
-        if (source == null)
-            return;
-
-        await source.CancelAsync().ConfigureAwait(false);
-
-        if (task != null)
-        {
-            try { await task.ConfigureAwait(false); }
-            catch { /* cancellation, or an error already logged by the pump */ }
-        }
-
-        pcm?.Dispose();
-        source.Dispose();
-
-        lock (this.sync)
-            this.IsPlaying = false;
-
-        this.logger.LogDebug("Linux audio playback stopped");
-    }
+    public Task StopAsync() => this.playbacks.StopAllAsync();
 
     #region volume
 
@@ -237,8 +235,6 @@ public class LinuxAudioPlayer : IAudioPlayer, IDisposable
     {
         this.volumeSubscription?.Dispose();
         this.volumeSubscription = null;
-        this.stream?.Dispose();
-        this.stream = null;
         GC.SuppressFinalize(this);
     }
 

@@ -6,7 +6,7 @@
 //   - Shiny.Audio  → BrowserAudioSource (raw PCM capture)
 //   - Shiny.Speech → BrowserSpeechToTextService / BrowserTextToSpeechService (Web Speech API)
 let recognition = null;
-let audioElement = null;
+const audioElements = new Map(); // playback id -> HTMLAudioElement (clips play concurrently)
 let audioVolume = 1.0; // app media-element volume (0.0–1.0), persisted across plays
 let recognitionStopped = false;
 let micAudioContext = null;
@@ -303,37 +303,70 @@ export const shinySpeech = {
     },
 
     // --- Audio Playback ---
+    // One <audio> element per clip, keyed by the .NET playback id, so several can overlap and each
+    // one can be stopped on its own.
     getIsPlaying() {
-        return audioElement ? !audioElement.paused : false;
+        return audioElements.size > 0;
     },
 
-    playAudio(dataUrl) {
-        if (audioElement) {
-            audioElement.pause();
-            audioElement = null;
+    playAudio(id, url) {
+        // Not `this.stopAudio(...)` — JSImport does not guarantee the call is bound to this object.
+        const existing = audioElements.get(id);
+        if (existing) {
+            existing.pause();
+            audioElements.delete(id);
         }
-        audioElement = new Audio(dataUrl);
-        audioElement.volume = audioVolume; // carry the persisted volume onto the new element
-        audioElement.play();
+
+        const element = new Audio(url);
+        element.volume = audioVolume; // carry the persisted volume onto the new element
+        audioElements.set(id, element);
+
+        element.addEventListener('ended', () => {
+            audioElements.delete(id);
+            getExports("Shiny.Audio").then(exports => {
+                exports.Shiny.Audio.BrowserAudioPlayer.OnPlaybackEnded(id);
+            });
+        });
+
+        element.addEventListener('error', () => {
+            audioElements.delete(id);
+            const message = element.error ? `code ${element.error.code}` : 'unknown error';
+            getExports("Shiny.Audio").then(exports => {
+                exports.Shiny.Audio.BrowserAudioPlayer.OnPlaybackFailed(id, message);
+            });
+        });
+
+        element.play();
     },
 
-    stopAudio() {
-        if (audioElement) {
-            audioElement.pause();
-            audioElement.currentTime = 0;
-            audioElement = null;
+    // Pass a falsy id to stop everything.
+    stopAudio(id) {
+        if (!id) {
+            audioElements.forEach(element => {
+                element.pause();
+                element.currentTime = 0;
+            });
+            audioElements.clear();
+            return;
+        }
+
+        const element = audioElements.get(id);
+        if (element) {
+            element.pause();
+            element.currentTime = 0;
+            audioElements.delete(id);
         }
     },
 
     // --- Volume ---
     // Browsers do not expose the OS volume, so this is the app's own media-element volume.
     getVolume() {
-        return audioElement ? audioElement.volume : audioVolume;
+        return audioVolume;
     },
 
     setVolume(volume) {
         audioVolume = Math.min(1, Math.max(0, volume));
-        if (audioElement) audioElement.volume = audioVolume;
+        audioElements.forEach(element => element.volume = audioVolume);
         // Echo back to .NET so VolumeChanged fires on a successful set (parity with the native platforms).
         getExports("Shiny.Audio").then(exports => {
             exports.Shiny.Audio.BrowserAudioPlayer.OnVolumeChanged(audioVolume);

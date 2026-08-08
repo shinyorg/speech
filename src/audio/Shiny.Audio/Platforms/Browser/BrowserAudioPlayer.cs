@@ -1,17 +1,23 @@
+using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices.JavaScript;
+using Shiny.Audio.Infrastructure;
 
 namespace Shiny.Audio;
 
 [SupportedOSPlatform("browser")]
 public partial class BrowserAudioPlayer : IAudioPlayer
 {
-    // Singleton bridge for the static [JSExport] volume-change callback (mirrors BrowserAudioSource).
+    // Singleton bridge for the static [JSExport] callbacks (mirrors BrowserAudioSource).
     static BrowserAudioPlayer? current;
 
     readonly ILogger<BrowserAudioPlayer> logger;
-    TaskCompletionSource? playTcs;
+    readonly AudioPlaybackRegistry playbacks = new();
+
+    // JS owns one <audio> element per clip, keyed by the playback id, so the ended/error callbacks
+    // can be routed back to the right handle.
+    readonly ConcurrentDictionary<string, AudioPlayback> byElementId = new();
 
     public BrowserAudioPlayer(ILogger<BrowserAudioPlayer> logger)
     {
@@ -19,7 +25,8 @@ public partial class BrowserAudioPlayer : IAudioPlayer
         current = this;
     }
 
-    public bool IsPlaying => BrowserJsModule.ImportAsync().IsCompletedSuccessfully && GetIsPlaying();
+    public bool IsPlaying => this.playbacks.IsPlaying;
+    public IReadOnlyList<IAudioPlayback> Active => this.playbacks.Active;
     public bool IsPlayerAnalysisSupported => false;
 #pragma warning disable CS0067
     public event EventHandler<double>? AudioLevelChanged;
@@ -41,73 +48,57 @@ public partial class BrowserAudioPlayer : IAudioPlayer
 
     public event EventHandler<float>? VolumeChanged;
 
-    public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
         await BrowserJsModule.ImportAsync();
-        playTcs?.TrySetResult();
-        playTcs = new TaskCompletionSource();
 
-        // Convert stream to base64 data URL for the browser Audio API
+        // Convert the stream to a base64 data URL for the browser Audio API
         using var ms = new MemoryStream();
         await audioStream.CopyToAsync(ms, cancellationToken);
         var base64 = Convert.ToBase64String(ms.ToArray());
-        var dataUrl = $"data:audio/mp3;base64,{base64}";
 
-        PlayAudio(dataUrl);
-        logger.LogDebug("Browser audio playback started");
-
-        cancellationToken.Register(() =>
-        {
-            StopAudio();
-            playTcs?.TrySetResult();
-        });
-
-        await playTcs.Task;
+        return this.StartCore($"data:audio/mp3;base64,{base64}", null, cancellationToken);
     }
 
-    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(string source, CancellationToken cancellationToken = default)
     {
         await BrowserJsModule.ImportAsync();
-        playTcs?.TrySetResult();
-        playTcs = new TaskCompletionSource();
 
         // The browser Audio element loads remote URLs (and app-relative paths) directly.
-        PlayAudio(source);
-        logger.LogDebug("Browser audio playback started ({Source})", source);
+        return this.StartCore(source, source, cancellationToken);
+    }
 
-        cancellationToken.Register(() =>
+    IAudioPlayback StartCore(string url, string? source, CancellationToken cancellationToken)
+    {
+        var playback = this.playbacks.Create(source);
+        var elementId = playback.Id.ToString();
+        this.byElementId[elementId] = playback;
+
+        playback.OnStop(() =>
         {
-            StopAudio();
-            playTcs?.TrySetResult();
+            this.byElementId.TryRemove(elementId, out _);
+            StopAudio(elementId);
+            this.logger.LogDebug("Browser audio playback stopped ({Source})", source);
+            return Task.CompletedTask;
         });
 
-        await playTcs.Task;
+        PlayAudio(elementId, url);
+
+        // Linked last so an already-cancelled token tears down a fully constructed playback.
+        playback.CancelWith(cancellationToken);
+        this.logger.LogDebug("Browser audio playback started ({Source})", source);
+        return playback;
     }
 
-    public Task StopAsync()
-    {
-        StopAudio();
-        playTcs?.TrySetResult();
-        playTcs = null;
-        logger.LogDebug("Browser audio playback stopped");
-        return Task.CompletedTask;
-    }
+    public Task StopAsync() => this.playbacks.StopAllAsync();
 
-    public ValueTask DisposeAsync()
-    {
-        StopAudio();
-        playTcs?.TrySetResult();
-        return ValueTask.CompletedTask;
-    }
-
-    [JSImport("shinySpeech.getIsPlaying", "shiny-speech")]
-    private static partial bool GetIsPlaying();
+    public ValueTask DisposeAsync() => new(this.playbacks.StopAllAsync());
 
     [JSImport("shinySpeech.playAudio", "shiny-speech")]
-    private static partial void PlayAudio(string dataUrl);
+    private static partial void PlayAudio(string id, string url);
 
     [JSImport("shinySpeech.stopAudio", "shiny-speech")]
-    private static partial void StopAudio();
+    private static partial void StopAudio(string id);
 
     [JSImport("shinySpeech.getVolume", "shiny-speech")]
     private static partial float GetVolume();
@@ -118,4 +109,20 @@ public partial class BrowserAudioPlayer : IAudioPlayer
     [JSExport]
     public static void OnVolumeChanged(float volume)
         => current?.VolumeChanged?.Invoke(current, volume);
+
+    /// <summary>The &lt;audio&gt; element reached its end. Called from JS — not part of the public API.</summary>
+    [JSExport]
+    public static void OnPlaybackEnded(string id)
+    {
+        if (current != null && current.byElementId.TryGetValue(id, out var playback))
+            playback.Complete();
+    }
+
+    /// <summary>The &lt;audio&gt; element failed to load or decode. Called from JS — not part of the public API.</summary>
+    [JSExport]
+    public static void OnPlaybackFailed(string id, string message)
+    {
+        if (current != null && current.byElementId.TryGetValue(id, out var playback))
+            playback.Fail(new InvalidOperationException($"Audio playback failed: {message}"));
+    }
 }

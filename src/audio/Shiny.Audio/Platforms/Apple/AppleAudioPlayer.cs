@@ -2,16 +2,22 @@ using AVFoundation;
 using CoreFoundation;
 using Foundation;
 using Microsoft.Extensions.Logging;
+using Shiny.Audio.Infrastructure;
 
 namespace Shiny.Audio;
 
 public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
 {
-    AVAudioPlayer? player;
-    TaskCompletionSource? playbackTcs;
+    readonly AudioPlaybackRegistry playbacks = new();
+
+    // One AVAudioPlayer per clip, kept alongside its handle so the single metering timer can sample
+    // all of them and report the loudest.
+    readonly List<(AudioPlayback Playback, AVAudioPlayer Native)> metered = new();
+    readonly Lock meterSync = new();
     NSTimer? meterTimer;
 
-    public bool IsPlaying => player?.Playing ?? false;
+    public bool IsPlaying => this.playbacks.IsPlaying;
+    public IReadOnlyList<IAudioPlayback> Active => this.playbacks.Active;
     public bool IsPlayerAnalysisSupported => true;
     public event EventHandler<double>? AudioLevelChanged;
 
@@ -99,45 +105,42 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
     }
 #endif
 
-    public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
         using var ms = new MemoryStream();
         await audioStream.CopyToAsync(ms, cancellationToken);
 
-        var newPlayer = AVAudioPlayer.FromData(NSData.FromArray(ms.ToArray()));
-        if (newPlayer == null)
+        var native = AVAudioPlayer.FromData(NSData.FromArray(ms.ToArray()));
+        if (native == null)
             throw new InvalidOperationException("Failed to create audio player from data");
 
-        await PlayCoreAsync(newPlayer, cancellationToken);
+        return StartCore(native, null, cancellationToken);
     }
 
-    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(string source, CancellationToken cancellationToken = default)
     {
-        AVAudioPlayer? newPlayer;
+        AVAudioPlayer? native;
         if (PlaybackSource.IsRemote(source))
         {
             // AVAudioPlayer cannot stream a remote URL, so buffer it into memory first
             // (keeps metering working, same as the stream path).
             var bytes = await PlaybackSource.DownloadAsync(source, cancellationToken);
-            newPlayer = AVAudioPlayer.FromData(NSData.FromArray(bytes));
+            native = AVAudioPlayer.FromData(NSData.FromArray(bytes));
         }
         else
         {
-            newPlayer = AVAudioPlayer.FromUrl(NSUrl.FromFilename(source), out _);
+            native = AVAudioPlayer.FromUrl(NSUrl.FromFilename(source), out _);
         }
 
-        if (newPlayer == null)
+        if (native == null)
             throw new InvalidOperationException($"Failed to create audio player from source: {source}");
 
-        await PlayCoreAsync(newPlayer, cancellationToken);
+        return StartCore(native, source, cancellationToken);
     }
 
-    async Task PlayCoreAsync(AVAudioPlayer newPlayer, CancellationToken cancellationToken)
+    IAudioPlayback StartCore(AVAudioPlayer native, string? source, CancellationToken cancellationToken)
     {
-        await StopAsync();
-
-        player = newPlayer;
-        player.MeteringEnabled = true;
+        native.MeteringEnabled = true;
 
 #if !MACOS
         // If something else (e.g. an active STT session) has already configured PlayAndRecord,
@@ -167,64 +170,85 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         session.SetActive(true, out _);
 #endif
 
-        // RunContinuationsAsynchronously is critical: OnFinishedPlaying runs on AVAudioPlayer's native
-        // FinishedPlaying callback. Without this, the await below resumes inline on that callback stack,
-        // and the downstream code (e.g. the next StopAsync) would Dispose() this player while the native
-        // callback is still executing — which the runtime reports as "player object was Dispose()d during
-        // the callback ... corrupted the state of the program". Async continuations unwind the native
-        // callback first, so disposal always happens on a clean stack.
-        playbackTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        player.FinishedPlaying += OnFinishedPlaying;
+        var playback = this.playbacks.Create(source);
 
-        using var reg = cancellationToken.Register(() =>
+        // FinishedPlaying runs on AVAudioPlayer's native callback stack, and disposing the player
+        // from there is what the runtime reports as "player object was Dispose()d during the callback
+        // ... corrupted the state of the program". AudioPlayback.Complete() only marks the handle
+        // finished and hops to the thread pool before running the teardown below, so disposal always
+        // happens on a clean stack.
+        void OnFinishedPlaying(object? sender, AVStatusEventArgs e) => playback.Complete();
+        native.FinishedPlaying += OnFinishedPlaying;
+
+        lock (this.meterSync)
+            this.metered.Add((playback, native));
+
+        playback.OnStop(() =>
         {
-            player?.Stop();
-            playbackTcs?.TrySetResult();
+            // Under meterSync so the metering timer can never sample a player mid-disposal.
+            lock (this.meterSync)
+            {
+                this.metered.RemoveAll(x => x.Playback.Id == playback.Id);
+                native.FinishedPlaying -= OnFinishedPlaying;
+                native.Stop();
+                native.Dispose();
+            }
+
+            StopMeterTimerIfIdle();
+            logger.LogDebug("Apple audio playback stopped ({Source})", source);
+            return Task.CompletedTask;
         });
 
-        player.Play();
+        native.Play();
         StartMeterTimer();
-        logger.LogDebug("Apple audio playback started");
 
-        await playbackTcs.Task;
-        logger.LogDebug("Apple audio playback finished");
-
-        StopMeterTimer();
-        // Only clean up if StopAsync/DisposeAsync hasn't already torn this player down (it nulls the
-        // field and detaches/disposes). Touching a disposed player here would itself throw.
-        if (ReferenceEquals(player, newPlayer))
-            newPlayer.FinishedPlaying -= OnFinishedPlaying;
+        // Linked last so an already-cancelled token tears down a fully constructed playback.
+        playback.CancelWith(cancellationToken);
+        logger.LogDebug("Apple audio playback started ({Source})", source);
+        return playback;
     }
 
+    // One timer for the player, not one per clip: it samples every live AVAudioPlayer and reports the
+    // loudest, so a VU meter shows what is actually audible when clips overlap.
     void StartMeterTimer()
-    {
-        StopMeterTimer();
-        DispatchQueue.MainQueue.DispatchAsync(() =>
-        {
-            meterTimer = NSTimer.CreateRepeatingScheduledTimer(TimeSpan.FromMilliseconds(50), _ => SampleMeter());
-        });
-    }
+        => DispatchQueue.MainQueue.DispatchAsync(() =>
+            meterTimer ??= NSTimer.CreateRepeatingScheduledTimer(TimeSpan.FromMilliseconds(50), _ => SampleMeters())
+        );
 
-    void StopMeterTimer()
-    {
-        if (meterTimer != null)
+    void StopMeterTimerIfIdle()
+        => DispatchQueue.MainQueue.DispatchAsync(() =>
         {
-            var t = meterTimer;
+            lock (this.meterSync)
+            {
+                if (this.metered.Count > 0)
+                    return;
+            }
+
+            meterTimer?.Invalidate();
             meterTimer = null;
-            DispatchQueue.MainQueue.DispatchAsync(t.Invalidate);
-        }
-    }
+        });
 
-    void SampleMeter()
+    void SampleMeters()
     {
-        var p = player;
-        if (p == null || !p.Playing)
-            return;
+        var level = 0.0;
+        var any = false;
 
-        p.UpdateMeters();
-        var db = p.AveragePower(0);
-        var level = DbToLinear(db);
-        AudioLevelChanged?.Invoke(this, level);
+        // Held for the whole sweep so a concurrent teardown cannot dispose a player out from under it.
+        lock (this.meterSync)
+        {
+            foreach (var (_, native) in this.metered)
+            {
+                if (!native.Playing)
+                    continue;
+
+                native.UpdateMeters();
+                level = Math.Max(level, DbToLinear(native.AveragePower(0)));
+                any = true;
+            }
+        }
+
+        if (any)
+            AudioLevelChanged?.Invoke(this, level);
     }
 
     static double DbToLinear(float db)
@@ -236,36 +260,11 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         return Math.Pow(10.0, db / 20.0);
     }
 
-    void OnFinishedPlaying(object? sender, AVStatusEventArgs e)
-        => playbackTcs?.TrySetResult();
+    public Task StopAsync() => this.playbacks.StopAllAsync();
 
-    public Task StopAsync()
+    public async ValueTask DisposeAsync()
     {
-        StopMeterTimer();
-        var p = player;
-        if (p != null)
-        {
-            player = null;
-            p.FinishedPlaying -= OnFinishedPlaying;
-            p.Stop();
-            p.Dispose();
-            playbackTcs?.TrySetResult();
-            logger.LogDebug("Apple audio playback stopped");
-        }
-        return Task.CompletedTask;
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        StopMeterTimer();
-        var p = player;
-        if (p != null)
-        {
-            player = null;
-            p.FinishedPlaying -= OnFinishedPlaying;
-            p.Stop();
-            p.Dispose();
-        }
+        await this.playbacks.StopAllAsync().ConfigureAwait(false);
 
 #if MACOS
         this.macVolume?.Dispose();
@@ -274,6 +273,5 @@ public class AppleAudioPlayer(ILogger<AppleAudioPlayer> logger) : IAudioPlayer
         this.volumeObserver?.Dispose();   // removes the KVO registration
         this.volumeObserver = null;
 #endif
-        return ValueTask.CompletedTask;
     }
 }

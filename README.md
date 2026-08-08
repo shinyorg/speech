@@ -3,7 +3,7 @@
 This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
-- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and stream playback (`IAudioPlayer`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), and real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
+- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and concurrent stream playback (`IAudioPlayer` / `IAudioPlayback`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), and real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
@@ -197,6 +197,30 @@ public class Player(IAudioPlayer audioPlayer)
 An absolute `http`/`https` value is treated as a remote source (progressively streamed on Android,
 Windows, and Browser; buffered on Apple); anything else is treated as a local file path. In the
 browser, a local path means an app-relative URL (there is no device file system).
+
+**Clips play concurrently.** Starting one does not stop the others, so background music, a sound
+effect and a voice line can overlap. `StartAsync` hands back an `IAudioPlayback` you can stop on its
+own — `StopAsync()` on the player stops everything:
+
+```csharp
+public class Mixer(IAudioPlayer audioPlayer)
+{
+    IAudioPlayback? music;
+
+    public async Task StartMusic()
+        => this.music = await audioPlayer.StartAsync("https://example.com/theme.mp3");
+
+    // Overlaps the music instead of interrupting it
+    public Task Ping() => audioPlayer.PlayAsync(Path.Combine(FileSystem.AppDataDirectory, "ping.mp3"));
+
+    public Task FadeOutMusic() => this.music?.StopAsync() ?? Task.CompletedTask;   // effects keep playing
+    public Task Silence() => audioPlayer.StopAsync();                              // everything stops
+}
+```
+
+`PlayAsync` is just `StartAsync` plus a wait on `IAudioPlayback.Completion`; a `CancellationToken`
+passed to either one stops that clip and nothing else. `IAudioPlayer.Active` lists what is playing
+right now.
 
 ### VU Meters (Audio Levels)
 

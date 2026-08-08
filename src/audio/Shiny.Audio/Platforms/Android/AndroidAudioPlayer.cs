@@ -3,6 +3,7 @@ using Android.Media;
 using Android.Media.Audiofx;
 using Android.Provider;
 using Microsoft.Extensions.Logging;
+using Shiny.Audio.Infrastructure;
 using Stream = System.IO.Stream;
 using AudioStream = Android.Media.Stream;
 
@@ -10,15 +11,14 @@ namespace Shiny.Audio;
 
 public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlayer
 {
-    MediaPlayer? mediaPlayer;
-    Visualizer? visualizer;
-    TaskCompletionSource? playbackTcs;
+    readonly AudioPlaybackRegistry playbacks = new();
 
     AudioManager? audioManager;
     VolumeObserver? volumeObserver;
     int lastVolumeStep = -1;
 
-    public bool IsPlaying => mediaPlayer?.IsPlaying ?? false;
+    public bool IsPlaying => this.playbacks.IsPlaying;
+    public IReadOnlyList<IAudioPlayback> Active => this.playbacks.Active;
     public bool IsPlayerAnalysisSupported => true;
     public event EventHandler<double>? AudioLevelChanged;
 
@@ -81,10 +81,8 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         this.volumeChanged?.Invoke(this, max <= 0 ? 0f : step / (float)max);
     }
 
-    public async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(Stream audioStream, CancellationToken cancellationToken = default)
     {
-        await StopAsync();
-
         var header = new byte[16];
         var headerRead = 0;
         while (headerRead < header.Length)
@@ -101,6 +99,7 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             $"tts_{Guid.NewGuid()}{extension}"
         );
 
+        MediaPlayer? mediaPlayer = null;
         try
         {
             await using (var fs = File.Create(tempFile))
@@ -111,44 +110,26 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             }
 
             mediaPlayer = new MediaPlayer();
-            playbackTcs = new TaskCompletionSource();
-
-            mediaPlayer.Completion += OnCompletion;
-            mediaPlayer.Error += OnError;
-
             await mediaPlayer.SetDataSourceAsync(tempFile);
             mediaPlayer.Prepare();
 
-            using var reg = cancellationToken.Register(() =>
-            {
-                mediaPlayer?.Stop();
-                playbackTcs?.TrySetResult();
-            });
-
-            mediaPlayer.Start();
-            AttachVisualizer(mediaPlayer.AudioSessionId);
-            logger.LogDebug("Android audio playback started");
-
-            await playbackTcs.Task;
-            logger.LogDebug("Android audio playback finished");
+            // The temp file backs this clip only, so it is deleted with the clip rather than with
+            // the player — concurrent clips each own their own file.
+            return StartCore(mediaPlayer, null, tempFile, cancellationToken);
         }
-        finally
+        catch
         {
-            DetachVisualizer();
+            mediaPlayer?.Release();
+            mediaPlayer?.Dispose();
             if (File.Exists(tempFile))
                 File.Delete(tempFile);
+            throw;
         }
     }
 
-    public async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    public async Task<IAudioPlayback> StartAsync(string source, CancellationToken cancellationToken = default)
     {
-        await StopAsync();
-
-        mediaPlayer = new MediaPlayer();
-        playbackTcs = new TaskCompletionSource();
-        mediaPlayer.Completion += OnCompletion;
-        mediaPlayer.Error += OnError;
-
+        var mediaPlayer = new MediaPlayer();
         try
         {
             // MediaPlayer resolves both remote http(s) URLs and local file paths natively.
@@ -164,69 +145,109 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             mediaPlayer.Error += OnPrepareError;
             mediaPlayer.PrepareAsync();
 
-            using var reg = cancellationToken.Register(() =>
-            {
-                try { mediaPlayer?.Stop(); } catch { /* player may not be started */ }
-                prepared.TrySetResult();
-                playbackTcs?.TrySetResult();
-            });
+            await using (cancellationToken.Register(() => prepared.TrySetCanceled(cancellationToken)))
+                await prepared.Task;
 
-            await prepared.Task;
             mediaPlayer.Prepared -= OnPrepared;
             mediaPlayer.Error -= OnPrepareError;
 
-            if (cancellationToken.IsCancellationRequested)
-                return;
-
-            mediaPlayer.Start();
-            AttachVisualizer(mediaPlayer.AudioSessionId);
-            logger.LogDebug("Android audio playback started ({Source})", source);
-
-            await playbackTcs.Task;
-            logger.LogDebug("Android audio playback finished");
+            return StartCore(mediaPlayer, source, null, cancellationToken);
         }
-        finally
+        catch
         {
-            DetachVisualizer();
+            mediaPlayer.Release();
+            mediaPlayer.Dispose();
+            throw;
         }
     }
 
-    void AttachVisualizer(int sessionId)
+    IAudioPlayback StartCore(MediaPlayer mediaPlayer, string? source, string? tempFile, CancellationToken cancellationToken)
     {
-        DetachVisualizer();
+        var playback = this.playbacks.Create(source);
+
+        void OnCompletion(object? sender, EventArgs e) => playback.Complete();
+        void OnError(object? sender, MediaPlayer.ErrorEventArgs e)
+        {
+            logger.LogWarning("Android audio playback error: {What} {Extra}", e.What, e.Extra);
+            playback.Fail(new InvalidOperationException($"Audio playback error: {e.What}"));
+        }
+
+        mediaPlayer.Completion += OnCompletion;
+        mediaPlayer.Error += OnError;
+
+        mediaPlayer.Start();
+        var visualizer = AttachVisualizer(playback, mediaPlayer.AudioSessionId);
+
+        playback.OnStop(() =>
+        {
+            DetachVisualizer(visualizer);
+            mediaPlayer.Completion -= OnCompletion;
+            mediaPlayer.Error -= OnError;
+
+            try
+            {
+                if (mediaPlayer.IsPlaying)
+                    mediaPlayer.Stop();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Error stopping Android MediaPlayer");
+            }
+
+            mediaPlayer.Release();
+            mediaPlayer.Dispose();
+
+            if (tempFile != null && File.Exists(tempFile))
+                File.Delete(tempFile);
+
+            logger.LogDebug("Android audio playback stopped ({Source})", source);
+            return Task.CompletedTask;
+        });
+
+        // Linked last so an already-cancelled token tears down a fully constructed playback.
+        playback.CancelWith(cancellationToken);
+        logger.LogDebug("Android audio playback started ({Source})", source);
+        return playback;
+    }
+
+    // A Visualizer binds to one audio session, so concurrent clips each get their own. Levels go
+    // through the registry, which reports the loudest across everything currently playing.
+    Visualizer? AttachVisualizer(AudioPlayback playback, int sessionId)
+    {
         try
         {
-            visualizer = new Visualizer(sessionId);
+            var visualizer = new Visualizer(sessionId);
             var sizeRange = Visualizer.GetCaptureSizeRange();
             if (sizeRange != null && sizeRange.Length > 0)
                 visualizer.SetCaptureSize(sizeRange[0]);
 
-            var listener = new WaveformListener(level => AudioLevelChanged?.Invoke(this, level));
+            var listener = new WaveformListener(level =>
+                AudioLevelChanged?.Invoke(this, this.playbacks.ReportLevel(playback, level))
+            );
             visualizer.SetDataCaptureListener(listener, Visualizer.MaxCaptureRate / 2, true, false);
             visualizer.SetEnabled(true);
+            return visualizer;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to attach Android Visualizer; audio levels will not be emitted");
-            visualizer?.Release();
-            visualizer = null;
+            return null;
         }
     }
 
-    void DetachVisualizer()
+    void DetachVisualizer(Visualizer? visualizer)
     {
-        if (visualizer != null)
+        if (visualizer == null)
+            return;
+
+        try
         {
-            try
-            {
-                visualizer.SetEnabled(false);
-                visualizer.Release();
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "Error releasing Android Visualizer");
-            }
-            visualizer = null;
+            visualizer.SetEnabled(false);
+            visualizer.Release();
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error releasing Android Visualizer");
         }
     }
 
@@ -247,38 +268,11 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
         return ".mp3";
     }
 
-    void OnCompletion(object? sender, EventArgs e)
-        => playbackTcs?.TrySetResult();
+    public Task StopAsync() => this.playbacks.StopAllAsync();
 
-    void OnError(object? sender, MediaPlayer.ErrorEventArgs e)
+    public async ValueTask DisposeAsync()
     {
-        logger.LogWarning("Android audio playback error: {What} {Extra}", e.What, e.Extra);
-        playbackTcs?.TrySetException(new InvalidOperationException($"Audio playback error: {e.What}"));
-    }
-
-    public Task StopAsync()
-    {
-        DetachVisualizer();
-        if (mediaPlayer != null)
-        {
-            if (mediaPlayer.IsPlaying)
-                mediaPlayer.Stop();
-
-            mediaPlayer.Release();
-            mediaPlayer.Dispose();
-            mediaPlayer = null;
-            playbackTcs?.TrySetResult();
-            logger.LogDebug("Android audio playback stopped");
-        }
-        return Task.CompletedTask;
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        DetachVisualizer();
-        mediaPlayer?.Release();
-        mediaPlayer?.Dispose();
-        mediaPlayer = null;
+        await this.playbacks.StopAllAsync().ConfigureAwait(false);
 
         if (this.volumeObserver != null)
         {
@@ -286,7 +280,6 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             this.volumeObserver.Dispose();
             this.volumeObserver = null;
         }
-        return ValueTask.CompletedTask;
     }
 
     // Fires OnChange on the main looper whenever a system setting changes; OnSystemVolumeChanged filters to

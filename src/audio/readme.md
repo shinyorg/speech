@@ -9,8 +9,10 @@ but is usable on its own:
 - **`IAudioSource`** — microphone capture that streams raw PCM audio (16kHz, 16-bit, mono) via a
   thread-safe `PipeStream`, with runtime permission handling (`RequestAccess` / `AccessState`) and a
   normalized `InputLevelChanged` VU signal on every platform.
-- **`IAudioPlayer`** — stream playback (e.g. MP3) with optional normalized `AudioLevelChanged`
-  metering for VU-style UI.
+- **`IAudioPlayer`** — stream / file / URL playback (e.g. MP3) with optional normalized
+  `AudioLevelChanged` metering for VU-style UI. Clips play **concurrently**: `StartAsync` returns an
+  `IAudioPlayback` you can stop on its own, `PlayAsync` waits for one clip without interrupting the
+  rest, and `StopAsync` stops the lot.
 - **`IAudioRecorder`** — record the microphone straight to a WAV file, optionally through a live
   effect chain, capturing the processed take, the raw one, or both.
 - **`AudioEffectChain`** — real-time DSP on capture (pitch shift, echo, reverb, filters, distortion,

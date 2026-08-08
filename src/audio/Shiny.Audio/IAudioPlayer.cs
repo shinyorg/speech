@@ -6,26 +6,62 @@ namespace Shiny.Audio;
 public interface IAudioPlayer : IAsyncDisposable
 {
     /// <summary>
-    /// Play an audio stream (e.g. MP3). Completes when playback finishes or is cancelled.
+    /// Start an audio stream (e.g. MP3) and return as soon as it is playing, with a handle you can
+    /// stop on its own.
     /// </summary>
-    Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// Clips play concurrently — starting one does not stop the others. Await
+    /// <see cref="IAudioPlayback.Completion"/> to know when this one finishes.
+    /// </remarks>
+    Task<IAudioPlayback> StartAsync(Stream audioStream, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Play audio from a remote URL (<c>http</c>/<c>https</c>) or a local file path. The platform
-    /// determines how to load the source — you never need to build a platform-specific file URI.
-    /// Completes when playback finishes or is cancelled.
+    /// Start audio from a remote URL (<c>http</c>/<c>https</c>) or a local file path and return as
+    /// soon as it is playing, with a handle you can stop on its own. The platform determines how to
+    /// load the source — you never need to build a platform-specific file URI.
     /// </summary>
     /// <param name="source">An absolute <c>http</c>/<c>https</c> URL, or a local file system path.</param>
-    Task PlayAsync(string source, CancellationToken cancellationToken = default)
-        => PlaybackSource.PlayResolvedAsync(this, source, cancellationToken);
+    Task<IAudioPlayback> StartAsync(string source, CancellationToken cancellationToken = default)
+        => PlaybackSource.StartResolvedAsync(this, source, cancellationToken);
 
     /// <summary>
-    /// Stop any current playback.
+    /// Play an audio stream (e.g. MP3) and wait for it to finish, stop, or be cancelled.
+    /// </summary>
+    /// <remarks>
+    /// Anything already playing keeps playing — call <see cref="StopAsync"/> first if this clip
+    /// should be the only one, or use <see cref="StartAsync(Stream, CancellationToken)"/> when you
+    /// want to keep control of the clip instead of waiting on it.
+    /// </remarks>
+    async Task PlayAsync(Stream audioStream, CancellationToken cancellationToken = default)
+    {
+        await using var playback = await this.StartAsync(audioStream, cancellationToken).ConfigureAwait(false);
+        await playback.Completion.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Play audio from a remote URL (<c>http</c>/<c>https</c>) or a local file path and wait for it
+    /// to finish, stop, or be cancelled. Anything already playing keeps playing.
+    /// </summary>
+    /// <param name="source">An absolute <c>http</c>/<c>https</c> URL, or a local file system path.</param>
+    async Task PlayAsync(string source, CancellationToken cancellationToken = default)
+    {
+        await using var playback = await this.StartAsync(source, cancellationToken).ConfigureAwait(false);
+        await playback.Completion.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Every playback currently running, oldest first. Stop one of these to cancel a single clip;
+    /// use <see cref="StopAsync"/> to cancel the lot.
+    /// </summary>
+    IReadOnlyList<IAudioPlayback> Active { get; }
+
+    /// <summary>
+    /// Stop every playback this player started.
     /// </summary>
     Task StopAsync();
 
     /// <summary>
-    /// Whether audio is currently playing.
+    /// Whether at least one clip is currently playing.
     /// </summary>
     bool IsPlaying { get; }
 
@@ -37,6 +73,10 @@ public interface IAudioPlayer : IAsyncDisposable
     /// <summary>
     /// Fires periodically during playback with the current output level normalized to 0.0 - 1.0.
     /// Only fires on platforms where <see cref="IsPlayerAnalysisSupported"/> is true.
+    /// <para>
+    /// There is one level stream for the player, not one per clip: while several clips overlap the
+    /// value is the loudest of them, which is what a VU meter should show.
+    /// </para>
     /// </summary>
     event EventHandler<double>? AudioLevelChanged;
 

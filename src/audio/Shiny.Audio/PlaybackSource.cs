@@ -21,12 +21,16 @@ static class PlaybackSource
         http.GetByteArrayAsync(source, cancellationToken);
 
     /// <summary>
-    /// Default resolution used by the <see cref="IAudioPlayer.PlayAsync(string, CancellationToken)"/>
-    /// interface method: opens a local file or downloads a remote URL, then plays it as a stream.
-    /// Platform implementations override <c>PlayAsync(string, …)</c> to hand the source to the
+    /// Default resolution used by the <see cref="IAudioPlayer.StartAsync(string, CancellationToken)"/>
+    /// interface method: opens a local file or downloads a remote URL, then starts it as a stream.
+    /// Platform implementations override <c>StartAsync(string, …)</c> to hand the source to the
     /// native player directly (e.g. progressive streaming of remote URLs).
     /// </summary>
-    internal static async Task PlayResolvedAsync(IAudioPlayer player, string source, CancellationToken cancellationToken)
+    /// <remarks>
+    /// The stream is closed as soon as <c>StartAsync</c> returns, so this is only usable by players
+    /// that fully consume (buffer or decode) the stream before starting playback.
+    /// </remarks>
+    internal static async Task<IAudioPlayback> StartResolvedAsync(IAudioPlayer player, string source, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(source))
             throw new ArgumentException("Source must be a non-empty URL or file path.", nameof(source));
@@ -35,12 +39,10 @@ static class PlaybackSource
         {
             var bytes = await DownloadAsync(source, cancellationToken).ConfigureAwait(false);
             using var ms = new MemoryStream(bytes);
-            await player.PlayAsync(ms, cancellationToken).ConfigureAwait(false);
+            return await player.StartAsync(ms, cancellationToken).ConfigureAwait(false);
         }
-        else
-        {
-            await using var fs = File.OpenRead(source);
-            await player.PlayAsync(fs, cancellationToken).ConfigureAwait(false);
-        }
+
+        await using var fs = File.OpenRead(source);
+        return await player.StartAsync(fs, cancellationToken).ConfigureAwait(false);
     }
 }
