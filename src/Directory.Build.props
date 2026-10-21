@@ -8,6 +8,7 @@
         <Owners>aritchie;shinylib</Owners>
 
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Copyright>Copyright (c) $([System.DateTime]::Now.Year) Allan Ritchie</Copyright>
         <PackageProjectUrl>https://shinylib.net</PackageProjectUrl>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReadmeFile>readme.md</PackageReadmeFile>
