@@ -226,7 +226,7 @@ public class AndroidAudioMonitor(AndroidPlatform platform, ILogger<AndroidAudioM
             trk.SetPreferredDevice(info);
     }
 
-    static AudioDeviceInfo? FindDeviceInfo(GetDevicesTargets target, string id)
+    internal static AudioDeviceInfo? FindDeviceInfo(GetDevicesTargets target, string id)
     {
         var am = (AudioManager?)Android.App.Application.Context.GetSystemService(Context.AudioService);
         var devices = am?.GetDevices(target);

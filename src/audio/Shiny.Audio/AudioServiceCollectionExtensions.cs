@@ -84,8 +84,10 @@ public static class AudioServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers audio input/output route enumeration (<see cref="IAudioDevices"/>). Only
-    /// implemented on iOS/Mac Catalyst and Android.
+    /// Registers audio input/output route enumeration (<see cref="IAudioDevices"/>) on iOS, Mac
+    /// Catalyst, macOS, Android and Windows (Linux registers its own through <c>AddLinuxAudio()</c>).
+    /// An input from <see cref="IAudioDevices.GetInputs"/> can be handed to
+    /// <see cref="AudioCaptureOptions.InputDevice"/> or <see cref="AudioRecordingOptions.InputDevice"/>.
     /// </summary>
     public static IServiceCollection AddAudioDevices(this IServiceCollection services)
     {
@@ -93,6 +95,8 @@ public static class AudioServiceCollectionExtensions
         services.TryAddSingleton<IAudioDevices, AppleAudioDevices>();
 #elif ANDROID
         services.TryAddSingleton<IAudioDevices, AndroidAudioDevices>();
+#elif WINDOWS
+        services.TryAddSingleton<IAudioDevices, WindowsAudioDevices>();
 #endif
         return services;
     }

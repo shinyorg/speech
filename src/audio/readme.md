@@ -78,6 +78,29 @@ Available effects: `GainEffect`, `NoiseGateEffect`, `BiquadFilterEffect`, `Disto
 `AudioEffectPresets.Create(...)` for ready-made combinations (Robot, Chipmunk, DeepVoice, Cathedral,
 Telephone, Megaphone, Ensemble).
 
+## Choosing the microphone
+
+`IAudioDevices` lists the microphones the system sees (`GetInputs()`, with `CurrentInput` the system
+default) and raises `Changed` when one is plugged in, removed or made the default. Hand one to a
+recording or a capture session; `null` keeps the system default.
+
+```csharp
+var mic = devices.GetInputs().FirstOrDefault(x => x.Type == AudioDeviceType.Usb);
+
+await recorder.StartAsync(new AudioRecordingOptions { InputDevice = mic });
+var pcm = await audioSource.StartCaptureAsync(new AudioCaptureOptions { InputDevice = mic });
+```
+
+| Platform | Inputs from | Capture from a chosen input |
+| --- | --- | --- |
+| macOS | CoreAudio devices with input streams (UID as `Id`) | The engine input node's I/O unit |
+| Windows | Device enumeration (`MediaDevice.GetAudioCaptureSelector`) | AudioGraph device input node |
+| Linux | PulseAudio/PipeWire sources (monitors excluded), ALSA hints | The source / PCM by name |
+| iOS / Mac Catalyst | `AVAudioSession.AvailableInputs` | The session's preferred input |
+| Android | `AudioManager` input devices | `AudioRecord` preferred device |
+
+A microphone unplugged since it was listed falls back to the system default rather than failing.
+
 > **Do not put effects on audio bound for speech recognition** — they destroy recognition and
 > wake-word accuracy.
 

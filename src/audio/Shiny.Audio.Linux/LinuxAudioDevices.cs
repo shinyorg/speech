@@ -73,8 +73,10 @@ public class LinuxAudioDevices(ILogger<LinuxAudioDevices> logger) : IAudioDevice
         var devices = PulseIntrospect.GetDevices(out var defaultSink, out var defaultSource);
         var currentName = isInput ? defaultSource : defaultSink;
 
+        // Every sink publishes a ".monitor" source that records what it plays. Those are loopbacks,
+        // not microphones, so they stay out of the input list.
         return devices
-            .Where(x => x.IsInput == isInput)
+            .Where(x => x.IsInput == isInput && !(isInput && IsMonitorSource(x.Name)))
             .Select(x => new AudioDevice(
                 x.Name,
                 x.Description,
@@ -129,6 +131,8 @@ public class LinuxAudioDevices(ILogger<LinuxAudioDevices> logger) : IAudioDevice
 
         return results;
     }
+
+    static bool IsMonitorSource(string name) => name.EndsWith(".monitor", StringComparison.Ordinal);
 
     /// <summary>
     /// Classify a route from its device name. Both stacks encode the bus in the name

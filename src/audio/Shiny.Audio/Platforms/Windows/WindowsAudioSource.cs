@@ -43,7 +43,17 @@ public class WindowsAudioSource(ILogger<WindowsAudioSource> logger) : IAudioSour
 
         audioGraph = graphResult.Graph;
 
-        var inputResult = await audioGraph.CreateDeviceInputNodeAsync(captureCategory, encoding);
+        // A chosen microphone is opened by its device id; one unplugged since it was listed falls back
+        // to the default capture device rather than failing the recording.
+        var device = options.InputDevice is { } chosen
+            ? await WindowsAudioDevices.FindInputAsync(chosen.Id)
+            : null;
+        if (options.InputDevice != null && device == null)
+            logger.LogDebug("Chosen input {Device} is not available; using the default capture device", options.InputDevice.Name);
+
+        var inputResult = device == null
+            ? await audioGraph.CreateDeviceInputNodeAsync(captureCategory, encoding)
+            : await audioGraph.CreateDeviceInputNodeAsync(captureCategory, encoding, device);
         if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
             throw new InvalidOperationException($"Failed to create input node: {inputResult.Status}");
 

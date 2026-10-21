@@ -38,7 +38,7 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
         if (this.stream != null)
             throw new InvalidOperationException("Capture is already running. Call StopCaptureAsync() first.");
 
-        var device = ResolveCaptureDevice(options.Processing);
+        var device = ResolveCaptureDevice(options);
         this.stream = PcmStream.OpenCapture(SampleRate, ChannelCount, device);
         this.sink = new CaptureSink(options, level => this.InputLevelChanged?.Invoke(this, level), SampleRate);
 
@@ -89,13 +89,18 @@ public class LinuxAudioSource(ILogger<LinuxAudioSource> logger) : IAudioSource
     }
 
     /// <summary>
-    /// PulseAudio exposes voice processing as a separate virtual source published by
-    /// <c>module-echo-cancel</c>, so honouring the request means selecting that source when the
-    /// user has loaded the module. Where it isn't loaded we capture raw, matching the best-effort
-    /// contract on <see cref="AudioProcessingOptions"/>.
+    /// A chosen microphone wins: its <see cref="AudioDevice.Id"/> is the PulseAudio source (or ALSA
+    /// PCM) name, which both backends open directly. Otherwise, PulseAudio exposes voice processing
+    /// as a separate virtual source published by <c>module-echo-cancel</c>, so honouring the request
+    /// means selecting that source when the user has loaded the module. Where it isn't loaded we
+    /// capture raw, matching the best-effort contract on <see cref="AudioProcessingOptions"/>.
     /// </summary>
-    static string? ResolveCaptureDevice(AudioProcessingOptions? processing)
+    static string? ResolveCaptureDevice(AudioCaptureOptions options)
     {
+        if (options.InputDevice is { } chosen)
+            return chosen.Id;
+
+        var processing = options.Processing;
         if (processing?.AnyEnabled != true || PcmStream.Backend != LinuxAudioBackend.PulseAudio)
             return null;
 

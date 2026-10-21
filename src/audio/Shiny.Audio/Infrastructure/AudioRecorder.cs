@@ -60,9 +60,8 @@ public class AudioRecorder(IAudioSource source, ILogger<AudioRecorder> logger) :
             if (options.MaxDuration is { } max)
                 this.cts.CancelAfter(max);
 
-            // Dry capture: the chain runs in the drain loop below, not in the source.
             var stream = await source
-                .StartCaptureAsync(new AudioCaptureOptions { Processing = options.Processing }, this.cts.Token)
+                .StartCaptureAsync(CaptureOptionsFor(options), this.cts.Token)
                 .ConfigureAwait(false);
 
             this.drainTask = Task.Run(() => this.DrainAsync(stream, options, this.cts.Token), CancellationToken.None);
@@ -79,6 +78,16 @@ public class AudioRecorder(IAudioSource source, ILogger<AudioRecorder> logger) :
             throw;
         }
     }
+
+    /// <summary>
+    /// What the source is asked for. Dry capture: the chain runs in the drain loop below, not in the
+    /// source, so only the processing and the microphone carry over.
+    /// </summary>
+    static AudioCaptureOptions CaptureOptionsFor(AudioRecordingOptions options) => new()
+    {
+        Processing = options.Processing,
+        InputDevice = options.InputDevice
+    };
 
     async Task DrainAsync(Stream stream, AudioRecordingOptions options, CancellationToken token)
     {

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using AVFoundation;
 using Foundation;
@@ -76,6 +77,17 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
         audioSession.SetActive(true, AVAudioSessionSetActiveOptions.NotifyOthersOnDeactivation, out var activeError);
         if (activeError != null)
             throw new InvalidOperationException($"Failed to activate audio session: {activeError.LocalizedDescription}");
+
+        // iOS routes by preference rather than by device: the session takes the chosen port as its
+        // preferred input, and the route follows. A port that has since gone away is skipped.
+        if (options.InputDevice is { } chosen)
+        {
+            var port = audioSession.AvailableInputs?.FirstOrDefault(p => p.UID == chosen.Id);
+            if (port != null)
+                audioSession.SetPreferredInput(port, out _);
+            else
+                logger.LogDebug("Chosen input {Device} is not available; using the current route", chosen.Name);
+        }
 #endif
 
         var inputNode = audioEngine.InputNode;
@@ -88,6 +100,14 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
             if (!inputNode.SetVoiceProcessingEnabled(true, out var vpError))
                 logger.LogWarning("Failed to enable voice processing (AEC/NS/AGC): {Error}", vpError?.LocalizedDescription);
         }
+
+#if MACOS
+        // The input node captures from the system default unless its I/O unit is pointed elsewhere,
+        // which has to happen before the format is read and the engine is prepared. After voice
+        // processing too, since enabling that swaps the unit underneath the node.
+        if (options.InputDevice is { } chosen)
+            this.SelectInputDevice(inputNode, chosen);
+#endif
 
         // Read the mic's native format only after the session is active (and voice processing,
         // which alters it, is applied) so the tap gets the real hardware format.
@@ -149,6 +169,22 @@ public class AppleAudioSource(ILogger<AppleAudioSource> logger) : IAudioSource
 #endif
         return Task.FromResult(captureSink.Stream);
     }
+
+#if MACOS
+    void SelectInputDevice(AVAudioInputNode inputNode, AudioDevice device)
+    {
+        var deviceId = MacAudioHardware.FindDevice(device.Id);
+        if (deviceId == 0)
+        {
+            logger.LogDebug("Chosen input {Device} is no longer connected; using the system default", device.Name);
+            return;
+        }
+
+        var status = inputNode.AudioUnit?.SetCurrentDevice(deviceId, AudioUnit.AudioUnitScopeType.Global);
+        if (status != AudioUnit.AudioUnitStatus.OK)
+            logger.LogWarning("Failed to select input {Device} ({Status}); using the system default", device.Name, status);
+    }
+#endif
 
     byte[] Convert(AVAudioPcmBuffer input, AVAudioFormat outputFormat)
     {

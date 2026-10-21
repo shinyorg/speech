@@ -72,6 +72,13 @@ public record AudioRecordingOptions
     /// </summary>
     public AudioEffectChain? Effects { get; init; }
 
+    /// <summary>
+    /// The microphone to record from — one of <see cref="IAudioDevices.GetInputs"/>. <c>null</c> uses
+    /// the system default input. Passed through to the capture session as
+    /// <see cref="AudioCaptureOptions.InputDevice"/>.
+    /// </summary>
+    public AudioDevice? InputDevice { get; init; }
+
     /// <summary>Platform voice processing (echo cancellation, noise suppression, AGC) for the capture session.</summary>
     public AudioProcessingOptions? Processing { get; init; }
 

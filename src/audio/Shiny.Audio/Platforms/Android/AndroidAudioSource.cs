@@ -54,6 +54,11 @@ public class AndroidAudioSource(AndroidPlatform platform, ILogger<AndroidAudioSo
         if (audioRecord.State != State.Initialized)
             throw new InvalidOperationException($"Failed to initialize AudioRecord (state={audioRecord.State}). The mic may be in use by another process.");
 
+        // Android routes by preference: a chosen input that has since gone away is simply not found,
+        // which leaves the default.
+        if (options.InputDevice is { } chosen && AndroidAudioMonitor.FindDeviceInfo(GetDevicesTargets.Inputs, chosen.Id) is { } info)
+            audioRecord.SetPreferredDevice(info);
+
         if (processing?.AnyEnabled == true)
             this.AttachAudioEffects(audioRecord.AudioSessionId, processing);
 

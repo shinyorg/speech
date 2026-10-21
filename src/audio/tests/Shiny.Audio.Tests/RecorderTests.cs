@@ -143,6 +143,40 @@ public class AudioRecorderTests
     }
 
     [Test]
+    public async Task PassesTheChosenMicrophoneAndProcessingToTheSource()
+    {
+        var recorder = Create(SignalMath.Sine(440, 3200), out var source);
+        var path = TempPath("take.wav");
+        var mic = new AudioDevice("usb-mic", "USB Microphone", AudioDeviceIo.Input, AudioDeviceType.Usb, false);
+
+        await RecordAsync(
+            recorder,
+            new AudioRecordingOptions { Path = path, InputDevice = mic, Processing = AudioProcessingOptions.VoiceChat },
+            6400
+        );
+
+        await Assert.That(source.LastOptions).IsNotNull();
+        await Assert.That(source.LastOptions!.InputDevice).IsEqualTo(mic);
+        await Assert.That(source.LastOptions.Processing).IsEqualTo(AudioProcessingOptions.VoiceChat);
+
+        Directory.Delete(Path.GetDirectoryName(path)!, true);
+    }
+
+    [Test]
+    public async Task NoMicrophone_LeavesTheSystemDefault()
+    {
+        var recorder = Create(SignalMath.Sine(440, 3200), out var source);
+        var path = TempPath("take.wav");
+
+        await RecordAsync(recorder, new AudioRecordingOptions { Path = path }, 6400);
+
+        await Assert.That(source.LastOptions).IsNotNull();
+        await Assert.That(source.LastOptions!.InputDevice).IsNull();
+
+        Directory.Delete(Path.GetDirectoryName(path)!, true);
+    }
+
+    [Test]
     public async Task WetMode_WritesTheProcessedSignal()
     {
         var signal = SignalMath.Sine(440, 16000, amplitude: 4000);

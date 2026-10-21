@@ -30,6 +30,13 @@ public record AudioCaptureOptions
     /// </remarks>
     public AudioEffectChain? Effects { get; init; }
 
+    /// <summary>
+    /// The microphone to capture from — one of <see cref="IAudioDevices.GetInputs"/>. <c>null</c> uses
+    /// the system default input. Honoured on macOS, Windows and Linux (and as the preferred input on
+    /// iOS/Mac Catalyst and Android); a device that has since gone away falls back to the default.
+    /// </summary>
+    public AudioDevice? InputDevice { get; init; }
+
     /// <summary>Capture raw input with no processing and no effects.</summary>
     public static AudioCaptureOptions None => new();
 }

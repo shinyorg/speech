@@ -445,8 +445,25 @@ public class PaController(IAudio audio)
 }
 ```
 
-`IAudioMonitor` and `IAudioDevices` are implemented on **iOS/Mac Catalyst and Android**; the facade
+`IAudioMonitor` is implemented on **iOS/Mac Catalyst and Android**, and `IAudioDevices` on **iOS/Mac
+Catalyst, macOS, Android and Windows** (Linux registers both through `AddLinuxAudio()`); the facade
 throws `PlatformNotSupportedException` if you touch them elsewhere.
+
+#### Recording from a chosen microphone
+
+Hand any input from `GetInputs()` to the capture or the recording; `null` (the default) is the
+system's default input, which `CurrentInput` reports. A microphone unplugged since it was listed falls
+back to the default rather than failing.
+
+```csharp
+var mic = audio.Devices.GetInputs().First(x => x.Type == AudioDeviceType.Usb);
+
+await recorder.StartAsync(new AudioRecordingOptions { InputDevice = mic });
+var stream = await audio.Source.StartCaptureAsync(new AudioCaptureOptions { InputDevice = mic });
+```
+
+It is honoured on macOS, Windows and Linux; on iOS/Mac Catalyst and Android it becomes the preferred
+input, and the route follows.
 
 #### Classifying the route
 

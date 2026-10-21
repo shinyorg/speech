@@ -8,14 +8,25 @@ namespace Shiny.Audio;
 public class AppleAudioDevices : IAudioDevices, IDisposable
 {
     readonly ILogger<AppleAudioDevices> logger;
-#if !MACOS
+#if MACOS
+    // Kept as a field: CoreAudio holds the marshalled thunk, so the delegate must outlive the listener.
+    readonly MacAudioHardware.ListenerProc hardwareListener;
+#else
     readonly NSObject? routeObserver;
 #endif
 
     public AppleAudioDevices(ILogger<AppleAudioDevices> logger)
     {
         this.logger = logger;
-#if !MACOS
+#if MACOS
+        // A microphone plugged in or removed, or a new default chosen in System Settings.
+        hardwareListener = (_, _, _, _) =>
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+            return 0;
+        };
+        MacAudioHardware.Listen(hardwareListener);
+#else
         routeObserver = AVAudioSession.Notifications.ObserveRouteChange(
             (_, _) => Changed?.Invoke(this, EventArgs.Empty));
 #endif
@@ -26,7 +37,15 @@ public class AppleAudioDevices : IAudioDevices, IDisposable
     public IReadOnlyList<AudioDevice> GetInputs()
     {
 #if MACOS
-        return [];
+        try
+        {
+            return MacAudioHardware.GetInputs();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to enumerate macOS audio inputs");
+            return [];
+        }
 #else
         var session = AVAudioSession.SharedInstance();
         var currentUids = session.CurrentRoute?.Inputs?.Select(p => p.UID).ToHashSet() ?? [];
@@ -58,7 +77,9 @@ public class AppleAudioDevices : IAudioDevices, IDisposable
 
     public void Dispose()
     {
-#if !MACOS
+#if MACOS
+        MacAudioHardware.StopListening(hardwareListener);
+#else
         routeObserver?.Dispose();
 #endif
         GC.SuppressFinalize(this);
