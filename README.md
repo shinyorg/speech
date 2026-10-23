@@ -3,7 +3,7 @@
 This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
-- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and concurrent stream playback (`IAudioPlayer` / `IAudioPlayback`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), and real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
+- **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and concurrent stream playback (`IAudioPlayer` / `IAudioPlayback`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), and echo-cancelled **full-duplex voice** for calls (`IAudioDuplex`), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
 - **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
@@ -15,7 +15,7 @@ the AI conversation loop running in the browser. Source: [`samples/BlazorSample`
 
 | Package | Description | Targets |
 |---------|-------------|---------|
-| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) + WAV recording (`IAudioRecorder`) + real-time capture effects (`AudioEffectChain`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
+| **Shiny.Audio** | Standalone audio capture (`IAudioSource`) + playback (`IAudioPlayer`) + live mic monitor (`IAudioMonitor`) + route enumeration (`IAudioDevices`) + WAV recording (`IAudioRecorder`) + real-time capture effects (`AudioEffectChain`) + full-duplex call audio (`IAudioDuplex`) behind the `IAudio` facade, with native platform implementations | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Audio.Linux** | Linux backend for all four audio services over PulseAudio/PipeWire with an ALSA fallback. Ships separately because it carries a managed MP3 decoder (`NLayer`) — Linux has no system decoder to call | net10.0 |
 | **Shiny.Speech** | Core STT/TTS interfaces + native platform implementations (references Shiny.Audio for capture/playback) | net10.0-ios, net10.0-android, net10.0-windows, net10.0 (Browser/WASM) |
 | **Shiny.Speech.Cloud** | Cloud provider abstractions + `CloudSpeechToText` / `CloudTextToSpeech` implementations | net10.0 |
@@ -417,7 +417,7 @@ than they would on full-bandwidth stereo: these are voice effects, not mastering
 ### Microphone Monitor & Routes (`IAudio`)
 
 Inject the single `IAudio` facade to reach the whole audio surface — `Player`, `Source`, `Monitor`,
-`Devices` — or keep injecting the focused interfaces directly. `IAudioMonitor` routes the mic straight
+`Devices`, `Recorder`, `Duplex` — or keep injecting the focused interfaces directly. `IAudioMonitor` routes the mic straight
 to the current output in near-real-time (a PA / "talk over a Bluetooth speaker"); `IAudioDevices`
 reports which routes are active.
 
@@ -505,6 +505,80 @@ plug/unplug — it fires on both platforms (iOS route-change notification, Andro
   the system picker). Use `CurrentInput`/`CurrentOutput` as a **display** property everywhere.
 
 See the **Microphone** tab in the MAUI sample for a full page.
+
+### Full-Duplex Voice for Calls (`IAudioDuplex`)
+
+`IAudioDuplex` runs microphone capture and live PCM playback on **one** voice-processing session, so
+the platform's echo canceller removes what the speaker plays from what the mic hears. Use it for a
+phone / FaceTime-style call where PCM frames arrive from the network every ~20 ms and must play
+straight away. `IAudioSource` plus `IAudioPlayer` can't do this: two sessions can't cancel each
+other's echo, and `IAudioPlayer.StartAsync(Stream)` is built for clips (Apple buffers the whole stream,
+Android copies it to a file first).
+
+```csharp
+using Shiny.Audio;
+
+public class CallAudio(IAudio audio)   // or inject IAudioDuplex directly
+{
+    IAudioDuplexSession? session;
+
+    public async Task Start(INetworkPipe pipe, CancellationToken ct)
+    {
+        if (await audio.Duplex.RequestAccess() != AccessState.Available)
+            return;
+
+        session = await audio.Duplex.StartAsync(new AudioDuplexOptions
+        {
+            SampleRate = 16000,      // or 8000 for narrow links
+            Speakerphone = true      // loudspeaker rather than the earpiece
+        }, ct);
+
+        // Mic → network: one 20 ms PCM16 mono frame per item, already echo-cancelled.
+        _ = Task.Run(async () =>
+        {
+            await foreach (var frame in session.Captured.ReadAllAsync(ct))
+                await pipe.Send(frame, ct);
+        }, ct);
+
+        // Network → speaker: hand over whatever arrives; it's jitter-buffered.
+        pipe.Received += pcm => session.Play(pcm.Span);
+    }
+
+    public void ToggleSpeaker() => session!.Speakerphone = !session.Speakerphone;   // applies live
+
+    public Task Stop() => session?.StopAsync() ?? Task.CompletedTask;               // restores the audio session
+}
+```
+
+| `AudioDuplexOptions` | Default | |
+|---|---|---|
+| `SampleRate` | `16000` | `8000` or `16000`, both directions |
+| `Processing` | `VoiceChat` | AEC + NS + AGC. Null / nothing enabled = no echo cancellation |
+| `Speakerphone` | `true` | Loudspeaker rather than the earpiece (a headset still wins) |
+| `FrameDuration` | 20 ms | Size of each `Captured` item, whole ms 10–100 |
+| `PlaybackLatency` | 60 ms | Jitter-buffer target: playback waits for this much, and re-primes after an underrun |
+| `MaxPlaybackLatency` | 200 ms | When more is queued, the oldest audio is dropped back to `PlaybackLatency` |
+
+How the playback queue behaves:
+- **`Play` is thread-safe and never blocks.** Any length; gaps (late or lost packets) play as silence.
+- **Priming:** nothing plays until about `PlaybackLatency` is queued; after the queue runs dry it primes
+  again, so one late packet doesn't turn into a stutter on every frame after it.
+- **Overflow:** a burst that takes the queue past `MaxPlaybackLatency` drops the oldest audio back to
+  `PlaybackLatency`, so delay can't build up over a call. `Buffered` reports what's queued.
+- **`Captured` is bounded** (about a second). A reader that falls behind loses the oldest frames.
+
+| Platform | How |
+|---|---|
+| iOS / Mac Catalyst | `AVAudioSession` `PlayAndRecord` + `VoiceChat` mode (`DefaultToSpeaker` for speakerphone, HFP Bluetooth when `AllowBluetooth`), one `AVAudioEngine` with voice processing on its input node, an `AVAudioConverter` tap and an `AVAudioPlayerNode` fed from the jitter buffer. Rebuilds itself on a route change |
+| macOS | The same engine, without `AVAudioSession`; `Speakerphone` has no effect |
+| Android | `AudioRecord` (`VOICE_COMMUNICATION`) + streaming `AudioTrack` (`USAGE_VOICE_COMMUNICATION`) on one audio session, `AcousticEchoCanceler` / `NoiseSuppressor` / `AutomaticGainControl` when the device has them, `MODE_IN_COMMUNICATION` and transient audio focus while running. Speakerphone through `setCommunicationDevice` (API 31+) or `setSpeakerphoneOn` below it. Needs `MODIFY_AUDIO_SETTINGS` in the manifest |
+| Windows, Linux, Browser | Not registered: `IAudio.Duplex` throws `PlatformNotSupportedException` |
+
+- **One session at a time.** A second `StartAsync` while one is running throws `InvalidOperationException`.
+- **Stop restores** the audio session category / mode (Apple) or audio mode, routing and focus (Android)
+  that the session changed. Disposing the session stops it.
+- Echo-cancellation quality is the platform's and the device's: it's very good on iPhones and varies
+  across Android hardware. Without processing, use a headset.
 
 ### Speech-to-Text
 
@@ -830,7 +904,7 @@ Add to `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
-`MODIFY_AUDIO_SETTINGS` is required for the TTS audio-level Visualizer and for the native STT beep suppression.
+`MODIFY_AUDIO_SETTINGS` is required for the TTS audio-level Visualizer, the native STT beep suppression and `IAudioDuplex` (call mode and speakerphone routing).
 
 Nothing else is needed. `Shiny.Speech` ships its own library manifest carrying the `<queries>`
 declaration that makes the platform recognition service visible on API 30+, and it merges into your

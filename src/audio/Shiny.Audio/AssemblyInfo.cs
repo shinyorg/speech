@@ -7,3 +7,6 @@ using System.Runtime.CompilerServices;
 // Shiny.Audio.Linux ships out-of-band (it pulls a managed MP3 decoder in), but is otherwise a
 // first-party platform backend and reuses the shared AudioLevelThrottle meter pacing.
 [assembly: InternalsVisibleTo("Shiny.Audio.Linux")]
+
+// The duplex jitter buffer, frame chunker and session plumbing are internal and unit-tested directly.
+[assembly: InternalsVisibleTo("Shiny.Audio.Tests")]

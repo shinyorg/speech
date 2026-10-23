@@ -8,7 +8,8 @@ public static class AudioServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the platform audio capture (<see cref="IAudioSource"/>), playback
-    /// (<see cref="IAudioPlayer"/>) and recording (<see cref="IAudioRecorder"/>) services.
+    /// (<see cref="IAudioPlayer"/>), recording (<see cref="IAudioRecorder"/>), monitoring, device and
+    /// full-duplex voice (<see cref="IAudioDuplex"/>) services.
     /// </summary>
     public static IServiceCollection AddAudioServices(this IServiceCollection services)
     {
@@ -17,7 +18,8 @@ public static class AudioServiceCollectionExtensions
             .AddAudioPlayer()
             .AddAudioMonitor()
             .AddAudioDevices()
-            .AddAudioRecorder();
+            .AddAudioRecorder()
+            .AddAudioDuplex();
 
         // One-stop discovery facade over the focused services above (which remain injectable directly).
         services.TryAddSingleton<IAudio, AudioFacade>();
@@ -79,6 +81,22 @@ public static class AudioServiceCollectionExtensions
         services.TryAddSingleton<IAudioMonitor, AppleAudioMonitor>();
 #elif ANDROID
         services.TryAddSingleton<IAudioMonitor, AndroidAudioMonitor>();
+#endif
+        return services;
+    }
+
+    /// <summary>
+    /// Registers full-duplex voice (<see cref="IAudioDuplex"/>): mic capture and live PCM playback on one
+    /// echo-cancelled session, for calls. Implemented on iOS, Mac Catalyst, macOS and Android; nothing is
+    /// registered on Windows, Linux or the browser.
+    /// </summary>
+    /// <remarks>A singleton: it owns the device's one call-audio session.</remarks>
+    public static IServiceCollection AddAudioDuplex(this IServiceCollection services)
+    {
+#if APPLE
+        services.TryAddSingleton<IAudioDuplex, AppleAudioDuplex>();
+#elif ANDROID
+        services.TryAddSingleton<IAudioDuplex, AndroidAudioDuplex>();
 #endif
         return services;
     }

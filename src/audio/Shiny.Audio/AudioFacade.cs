@@ -20,6 +20,9 @@ public class AudioFacade(IServiceProvider services) : IAudio
     public IAudioDevices Devices => services.GetService<IAudioDevices>()
         ?? throw new PlatformNotSupportedException($"Audio device enumeration is only available on iOS/Mac Catalyst, Android and Linux.{LinuxHint}");
 
+    public IAudioDuplex Duplex => services.GetService<IAudioDuplex>()
+        ?? throw new PlatformNotSupportedException("Full-duplex voice (IAudioDuplex) is only available on iOS, Mac Catalyst, macOS and Android.");
+
     // Linux support ships in a separate package, so an unregistered service there is far more
     // likely to be a missing AddLinuxAudio() call than an unsupported platform.
     static string LinuxHint => OperatingSystem.IsLinux()

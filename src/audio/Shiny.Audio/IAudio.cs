@@ -27,4 +27,10 @@ public interface IAudio
     /// each access yields a fresh recorder, so resolve it once per recording.
     /// </summary>
     IAudioRecorder Recorder { get; }
+
+    /// <summary>
+    /// Full-duplex voice for calls: echo-cancelled mic capture plus live PCM playback on one session.
+    /// iOS, Mac Catalyst, macOS and Android only.
+    /// </summary>
+    IAudioDuplex Duplex { get; }
 }

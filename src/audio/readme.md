@@ -15,6 +15,10 @@ but is usable on its own:
   rest, and `StopAsync` stops the lot.
 - **`IAudioRecorder`** — record the microphone straight to a WAV file, optionally through a live
   effect chain, capturing the processed take, the raw one, or both.
+- **`IAudioDuplex`** — full-duplex voice for calls: echo-cancelled mic frames out (`Captured`) and
+  live network PCM in (`Play`) on one voice-processing session, with a jitter buffer (priming,
+  underrun re-prime, overflow drop) and live speakerphone switching. iOS, Mac Catalyst, macOS and
+  Android.
 - **`AudioEffectChain`** — real-time DSP on capture (pitch shift, echo, reverb, filters, distortion,
   ring modulation, chorus, gain, noise gate) that you toggle and re-tune *while recording*.
 - **`AudioLevel`** — the shared dBFS mapping behind every meter (`FromRms` / `FromPcm16` /
@@ -46,6 +50,26 @@ public class Recorder(IAudioSource audioSource)
     }
 }
 ```
+
+## Full-duplex voice (calls)
+
+```csharp
+var session = await audio.Duplex.StartAsync(new AudioDuplexOptions { SampleRate = 16000 });
+
+// mic -> network: one 20 ms PCM16 mono frame per item, echo-cancelled
+await foreach (var frame in session.Captured.ReadAllAsync(ct))
+    await network.SendAsync(frame, ct);
+
+// network -> speaker, from any thread, any size (jitter-buffered; gaps play as silence)
+session.Play(received.Span);
+
+session.Speakerphone = false;   // earpiece, live
+await session.StopAsync();      // restores the audio session
+```
+
+Defaults: 16 kHz, `AudioProcessingOptions.VoiceChat`, speakerphone on, 20 ms frames, 60 ms target
+playback latency and 200 ms maximum (older audio is dropped). One session at a time. Not available
+on Windows, Linux or the browser. On Android add `MODIFY_AUDIO_SETTINGS` to the manifest.
 
 ## Effects & recording
 
@@ -104,13 +128,14 @@ A microphone unplugged since it was listed falls back to the system default rath
 > **Do not put effects on audio bound for speech recognition** — they destroy recognition and
 > wake-word accuracy.
 
-| Platform | Audio Capture | Audio Playback |
-| --- | --- | --- |
-| iOS 15+ | AVAudioEngine | AVAudioPlayer |
-| Android 26+ | AudioRecord | MediaPlayer |
-| Windows 10 19041+ | AudioGraph | MediaPlayer |
-| Browser (WASM) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` |
-| Linux | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | PulseAudio / PipeWire (`pa_simple`), ALSA fallback |
+| Platform | Audio Capture | Audio Playback | Full duplex (`IAudioDuplex`) |
+| --- | --- | --- | --- |
+| iOS 15+ / Mac Catalyst | AVAudioEngine | AVAudioPlayer | AVAudioEngine voice processing + AVAudioPlayerNode |
+| macOS | AVAudioEngine | AVAudioPlayer | AVAudioEngine voice processing + AVAudioPlayerNode |
+| Android 26+ | AudioRecord | MediaPlayer | AudioRecord + AudioTrack (voice communication) |
+| Windows 10 19041+ | AudioGraph | MediaPlayer | ❌ |
+| Browser (WASM) | Web Audio API (`getUserMedia` + `ScriptProcessorNode`) | HTML5 `Audio` | ❌ |
+| Linux | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | PulseAudio / PipeWire (`pa_simple`), ALSA fallback | ❌ |
 
 ## Linux
 
