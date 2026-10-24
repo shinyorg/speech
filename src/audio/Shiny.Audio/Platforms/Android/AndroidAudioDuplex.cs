@@ -56,6 +56,9 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
     AudioFocusRequestClass? focusRequest;
     Thread? captureThread;
     Thread? playbackThread;
+    InputDeviceCallback? deviceCallback;
+    AudioDeviceInfo? inputInfo;              // the chosen mic, resolved; null = the default
+    readonly object routeGate = new();       // the record's preferred device and the call route move together
     volatile bool running;
     bool speakerphone = options.Speakerphone;
     bool modeChanged;
@@ -75,7 +78,66 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
 
             this.speakerphone = value;
             if (this.running)
-                this.ApplyRoute();
+            {
+                lock (this.routeGate)
+                    this.ApplyRoute();
+            }
+        }
+    }
+
+    // SetPreferredDevice reroutes a recording AudioRecord in place: no restart, no gap beyond the HAL's
+    // own switch. The call route follows the mic (see ApplyRoute).
+    protected override bool SelectInputDevice(AudioDevice? device)
+    {
+        lock (this.routeGate)
+        {
+            if (!this.running || this.record is not { } rec)
+                return true;
+
+            var applied = this.ApplyPreferredInput(rec, device);
+            this.ApplyRoute();
+            logger.LogDebug("Android audio duplex input set to {Device}", this.inputInfo?.ProductName ?? "the default");
+            return applied;
+        }
+    }
+
+    // The chosen mic as the record's preferred device (null clears it). Returns false, on the default,
+    // when that mic isn't connected.
+    bool ApplyPreferredInput(AudioRecord rec, AudioDevice? device)
+    {
+        var info = device == null ? null : AndroidAudioMonitor.FindDeviceInfo(GetDevicesTargets.Inputs, device.Id);
+        if (device != null && info == null)
+            logger.LogDebug("Duplex input {Device} is not available; using the default", device.Name);
+
+        this.inputInfo = info;
+        if (!rec.SetPreferredDevice(info))
+            logger.LogWarning("Failed to set the duplex input to {Device}", device?.Name ?? "the default");
+
+        return device == null || info != null;
+    }
+
+    // The chosen mic was unplugged or disconnected: back to the default mic and the default route.
+    void OnDevicesRemoved(AudioDeviceInfo[] removed)
+    {
+        lock (this.routeGate)
+        {
+            if (!this.running || this.inputInfo is not { } mic || !removed.Any(d => d.Id == mic.Id))
+                return;
+
+            logger.LogDebug("Duplex input {Device} went away; using the default", mic.ProductName);
+            this.inputInfo = null;
+            this.record?.SetPreferredDevice(null);
+            this.ApplyRoute();
+        }
+        this.OnInputDeviceUnavailable();
+    }
+
+    sealed class InputDeviceCallback(Action<AudioDeviceInfo[]> onRemoved) : AudioDeviceCallback
+    {
+        public override void OnAudioDevicesRemoved(AudioDeviceInfo[]? removedDevices)
+        {
+            if (removedDevices is { Length: > 0 })
+                onRemoved(removedDevices);
         }
     }
 
@@ -133,7 +195,16 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
         if (this.WantsProcessing)
             this.AttachEffects(this.record.AudioSessionId, this.Options.Processing!);
 
+        // Android routes by preference: a chosen mic that has since gone away is simply not found, which
+        // leaves the default (the same rule AndroidAudioSource follows).
+        var inputApplied = this.ApplyPreferredInput(this.record, this.InputDevice);
         this.ApplyRoute();
+        if (!inputApplied)
+            this.OnInputDeviceUnavailable(notify: false);
+
+        // Only removals matter: they're how a chosen headset mic disappears mid-call.
+        this.deviceCallback = new InputDeviceCallback(this.OnDevicesRemoved);
+        this.audioManager.RegisterAudioDeviceCallback(this.deviceCallback, null);
 
         this.running = true;
         this.record.StartRecording();
@@ -196,20 +267,31 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
         }
     }
 
-    // Headsets win; otherwise the loudspeaker or the earpiece, per Speakerphone.
+    // With no mic chosen: headsets win, otherwise the loudspeaker or the earpiece, per Speakerphone.
+    // In MODE_IN_COMMUNICATION the communication device decides the call's mic as well as its speaker, so
+    // a chosen mic steers it too: a headset mic routes the call to that headset (that's also what brings a
+    // Bluetooth SCO link up), and the built-in mic keeps the call on the speaker/earpiece even with a
+    // headset connected. A mic with no communication counterpart (a USB mic) leaves the default rule.
     void ApplyRoute()
     {
         var am = this.audioManager;
         if (am == null)
             return;
 
+        var mic = this.inputInfo;
+        var builtInMic = mic?.Type == DroidDeviceType.BuiltinMic;
+
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(31))
             {
                 var devices = am.AvailableCommunicationDevices;
-                var pick = devices.FirstOrDefault(d => this.IsHeadset(d.Type))
-                    ?? devices.FirstOrDefault(d => d.Type == (this.speakerphone ? DroidDeviceType.BuiltinSpeaker : DroidDeviceType.BuiltinEarpiece));
+                var builtIn = devices.FirstOrDefault(d => d.Type == (this.speakerphone ? DroidDeviceType.BuiltinSpeaker : DroidDeviceType.BuiltinEarpiece));
+                var pick = builtInMic
+                    ? builtIn
+                    : (mic == null ? null : devices.FirstOrDefault(d => SameHardware(d, mic)))
+                        ?? devices.FirstOrDefault(d => this.IsHeadset(d.Type))
+                        ?? builtIn;
 
                 if (pick == null)
                     am.ClearCommunicationDevice();
@@ -218,9 +300,11 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
             }
             else
             {
+                // Below 31 there's only the speakerphone switch; the record's preferred device picks the mic.
                 var outputs = am.GetDevices(GetDevicesTargets.Outputs) ?? [];
+                var headsetMic = mic != null && !builtInMic && outputs.Any(d => SameHardware(d, mic));
 #pragma warning disable CA1422
-                am.SpeakerphoneOn = this.speakerphone && !outputs.Any(d => this.IsHeadset(d.Type));
+                am.SpeakerphoneOn = this.speakerphone && !headsetMic && (builtInMic || !outputs.Any(d => this.IsHeadset(d.Type)));
 #pragma warning restore CA1422
             }
         }
@@ -228,6 +312,21 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
         {
             logger.LogWarning(ex, "Failed to apply the duplex audio route (speakerphone={Speaker})", this.speakerphone);
         }
+    }
+
+    // The speaker side of the same physical headset as a chosen mic: same type, and same address where
+    // the platform reports one (two Bluetooth headsets differ by address).
+    static bool SameHardware(AudioDeviceInfo output, AudioDeviceInfo mic)
+    {
+        if (output.Type != mic.Type || mic.Type == DroidDeviceType.BuiltinMic)
+            return false;
+
+        if (!OperatingSystem.IsAndroidVersionAtLeast(28))
+            return true;
+
+        var a = output.Address;
+        var b = mic.Address;
+        return string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b) || a == b;
     }
 
     bool IsHeadset(DroidDeviceType type)
@@ -285,7 +384,16 @@ sealed class AndroidAudioDuplexSession(AudioDuplexOptions options, ILogger logge
 
     protected override Task StopCoreAsync()
     {
-        this.running = false;
+        lock (this.routeGate)
+            this.running = false;
+
+        if (this.deviceCallback != null)
+        {
+            try { this.audioManager?.UnregisterAudioDeviceCallback(this.deviceCallback); } catch { }
+            this.deviceCallback.Dispose();
+            this.deviceCallback = null;
+        }
+        this.inputInfo = null;
 
         // Stopping unblocks the threads' Read/Write; join them before releasing what they use.
         try { if (this.record?.RecordingState == RecordState.Recording) this.record.Stop(); } catch { }

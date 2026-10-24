@@ -546,6 +546,9 @@ public class CallAudio(IAudio audio)   // or inject IAudioDuplex directly
 
     public void ToggleSpeaker() => session!.Speakerphone = !session.Speakerphone;   // applies live
 
+    // Pick a mic from audio.Devices.GetInputs(); null goes back to the system default. Applies live.
+    public void UseMic(AudioDevice? mic) => session!.InputDevice = mic;
+
     public Task Stop() => session?.StopAsync() ?? Task.CompletedTask;               // restores the audio session
 }
 ```
@@ -555,6 +558,7 @@ public class CallAudio(IAudio audio)   // or inject IAudioDuplex directly
 | `SampleRate` | `16000` | `8000` or `16000`, both directions |
 | `Processing` | `VoiceChat` | AEC + NS + AGC. Null / nothing enabled = no echo cancellation |
 | `Speakerphone` | `true` | Loudspeaker rather than the earpiece (a headset still wins) |
+| `InputDevice` | `null` | The mic, from `IAudioDevices.GetInputs()`. Null = the system default. Changeable live via `IAudioDuplexSession.InputDevice` |
 | `FrameDuration` | 20 ms | Size of each `Captured` item, whole ms 10–100 |
 | `PlaybackLatency` | 60 ms | Jitter-buffer target: playback waits for this much, and re-primes after an underrun |
 | `MaxPlaybackLatency` | 200 ms | When more is queued, the oldest audio is dropped back to `PlaybackLatency` |
@@ -567,11 +571,23 @@ How the playback queue behaves:
   `PlaybackLatency`, so delay can't build up over a call. `Buffered` reports what's queued.
 - **`Captured` is bounded** (about a second). A reader that falls behind loses the oldest frames.
 
+Choosing the microphone (`InputDevice`):
+- **Set it live.** `session.InputDevice = mic` switches without stopping the call; `null` goes back to
+  the default. An output device throws `ArgumentException`. A mic that isn't connected falls back to the
+  default, and `InputDevice` then reads `null`.
+- **A headset's mic and speaker move together** (iOS, Mac Catalyst, Android): choosing a Bluetooth, wired
+  or USB headset mic routes the call's audio to that headset too, and `Speakerphone` has no effect while
+  it's chosen. Choosing the **built-in** mic while a headset is connected takes the call off the headset,
+  to the loudspeaker or earpiece per `Speakerphone`. With `null`, a connected headset wins as before.
+- **`InputDeviceChanged`** fires when the platform changes it underneath you: the chosen mic was
+  unplugged or disconnected, the session is back on the default, and `InputDevice` reads `null`. It
+  isn't raised for your own sets.
+
 | Platform | How |
 |---|---|
-| iOS / Mac Catalyst | `AVAudioSession` `PlayAndRecord` + `VoiceChat` mode (`DefaultToSpeaker` for speakerphone, HFP Bluetooth when `AllowBluetooth`), one `AVAudioEngine` with voice processing on its input node, an `AVAudioConverter` tap and an `AVAudioPlayerNode` fed from the jitter buffer. Rebuilds itself on a route change |
-| macOS | The same engine, without `AVAudioSession`; `Speakerphone` has no effect |
-| Android | `AudioRecord` (`VOICE_COMMUNICATION`) + streaming `AudioTrack` (`USAGE_VOICE_COMMUNICATION`) on one audio session, `AcousticEchoCanceler` / `NoiseSuppressor` / `AutomaticGainControl` when the device has them, `MODE_IN_COMMUNICATION` and transient audio focus while running. Speakerphone through `setCommunicationDevice` (API 31+) or `setSpeakerphoneOn` below it. Needs `MODIFY_AUDIO_SETTINGS` in the manifest |
+| iOS / Mac Catalyst | `AVAudioSession` `PlayAndRecord` + `VoiceChat` mode (`DefaultToSpeaker` for speakerphone, HFP Bluetooth when `AllowBluetooth`), one `AVAudioEngine` with voice processing on its input node, an `AVAudioConverter` tap and an `AVAudioPlayerNode` fed from the jitter buffer. Rebuilds itself on a route change. `InputDevice` is the session's preferred input (`SetPreferredInput`); the route change it causes rebuilds the engine, so expect a short blip |
+| macOS | The same engine, without `AVAudioSession`; `Speakerphone` has no effect. `InputDevice` points the voice-processing unit at that CoreAudio device; switching live restarts the engine (a gap of a few tens of ms, queued playback kept). Only the input changes: macOS output is a separate device |
+| Android | `AudioRecord` (`VOICE_COMMUNICATION`) + streaming `AudioTrack` (`USAGE_VOICE_COMMUNICATION`) on one audio session, `AcousticEchoCanceler` / `NoiseSuppressor` / `AutomaticGainControl` when the device has them, `MODE_IN_COMMUNICATION` and transient audio focus while running. Speakerphone through `setCommunicationDevice` (API 31+) or `setSpeakerphoneOn` below it. `InputDevice` is the record's `setPreferredDevice`, switched in place, and steers the communication device as above. Below API 31 the duplex doesn't start a Bluetooth SCO link, so a Bluetooth headset mic may not be reachable there. Needs `MODIFY_AUDIO_SETTINGS` in the manifest |
 | Windows, Linux, Browser | Not registered: `IAudio.Duplex` throws `PlatformNotSupportedException` |
 
 - **One session at a time.** A second `StartAsync` while one is running throws `InvalidOperationException`.

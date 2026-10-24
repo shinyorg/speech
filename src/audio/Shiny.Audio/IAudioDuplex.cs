@@ -73,6 +73,36 @@ public interface IAudioDuplexSession : IAsyncDisposable
     bool Speakerphone { get; set; }
 
     /// <summary>
+    /// The microphone the session captures from — one of <see cref="IAudioDevices.GetInputs"/> — or
+    /// <c>null</c> for the system default. Starts as <see cref="AudioDuplexOptions.InputDevice"/> and
+    /// switches live: capture keeps going and playback isn't interrupted beyond the short reconfiguration
+    /// the platform needs (macOS restarts its audio engine, so expect a brief gap there). A device that
+    /// isn't available falls back to the default, and this then reads <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A headset's mic and its speaker travel together on iOS and Android: choosing a Bluetooth, wired or
+    /// USB headset mic routes the call's audio to that headset as well, and <see cref="Speakerphone"/> has
+    /// no effect while it's chosen. Choosing the built-in mic while a headset is connected takes the call
+    /// off the headset, to the loudspeaker or earpiece per <see cref="Speakerphone"/>. <c>null</c> keeps
+    /// the default rule (a connected headset wins).
+    /// </para>
+    /// <para>
+    /// On macOS the input is a separate device from the output, so only the capture side changes.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">The device is an output.</exception>
+    AudioDevice? InputDevice { get; set; }
+
+    /// <summary>
+    /// Fires when the platform changes <see cref="InputDevice"/> underneath you: the chosen mic was
+    /// unplugged or disconnected, the session fell back to the system default, and
+    /// <see cref="InputDevice"/> now reads <c>null</c>. Not raised when you set it yourself. Raised on a
+    /// platform notification thread.
+    /// </summary>
+    event EventHandler? InputDeviceChanged;
+
+    /// <summary>
     /// Fires about 20 times a second with the captured (processed) microphone level, 0.0 – 1.0.
     /// Raised on the capture thread.
     /// </summary>
@@ -102,6 +132,15 @@ public record AudioDuplexOptions
 
     /// <summary>Start on the loudspeaker rather than the earpiece. Default true. Changeable live via <see cref="IAudioDuplexSession.Speakerphone"/>.</summary>
     public bool Speakerphone { get; init; } = true;
+
+    /// <summary>
+    /// The microphone to capture from — one of <see cref="IAudioDevices.GetInputs"/>. <c>null</c> uses the
+    /// system default input. Honoured on macOS (the engine's input device) and as the preferred input on
+    /// iOS/Mac Catalyst and Android; a device that has since gone away falls back to the default. Changeable
+    /// live via <see cref="IAudioDuplexSession.InputDevice"/>, which documents how a headset mic interacts
+    /// with <see cref="Speakerphone"/>.
+    /// </summary>
+    public AudioDevice? InputDevice { get; init; }
 
     /// <summary>Length of each <see cref="IAudioDuplexSession.Captured"/> frame: whole milliseconds, 10–100. Default 20 ms.</summary>
     public TimeSpan FrameDuration { get; init; } = TimeSpan.FromMilliseconds(20);
@@ -133,6 +172,9 @@ public record AudioDuplexOptions
         var ms = this.FrameDuration.TotalMilliseconds;
         if (ms < 10 || ms > 100 || ms != Math.Floor(ms))
             throw new ArgumentException($"FrameDuration must be whole milliseconds between 10 and 100 (was {ms} ms).", nameof(this.FrameDuration));
+
+        if (this.InputDevice is { Io: not AudioDeviceIo.Input } output)
+            throw new ArgumentException($"InputDevice '{output.Name}' is an output device. Pick one from IAudioDevices.GetInputs().", nameof(this.InputDevice));
 
         if (this.PlaybackLatency < TimeSpan.Zero)
             throw new ArgumentException("PlaybackLatency can't be negative.", nameof(this.PlaybackLatency));

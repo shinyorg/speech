@@ -20,10 +20,12 @@ abstract class AudioDuplexSession : IAudioDuplexSession
     readonly AudioLevelThrottle throttle = new();
     readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     int stopState;
+    AudioDevice? inputDevice;
 
     protected AudioDuplexSession(AudioDuplexOptions options)
     {
         this.Options = options;
+        this.inputDevice = options.InputDevice;
         this.jitter = new AudioJitterBuffer(options.SampleRate, options.PlaybackLatency, options.MaxPlaybackLatency);
         this.chunker = new PcmFrameChunker(options.FrameBytes);
 
@@ -54,7 +56,53 @@ abstract class AudioDuplexSession : IAudioDuplexSession
 
     public abstract bool Speakerphone { get; set; }
 
+    public AudioDevice? InputDevice
+    {
+        get => Volatile.Read(ref this.inputDevice);
+        set
+        {
+            if (value is { Io: not AudioDeviceIo.Input })
+                throw new ArgumentException($"'{value.Name}' is an output device. Pick one from IAudioDevices.GetInputs().", nameof(value));
+
+            // Same mic (by id: IsCurrent and the name can differ between enumerations) is a no-op.
+            if (SameDevice(this.InputDevice, value))
+                return;
+
+            if (this.IsStopped)
+            {
+                Volatile.Write(ref this.inputDevice, value);
+                return;
+            }
+
+            // A mic that isn't there any more falls back to the default, and the property says so.
+            var applied = this.SelectInputDevice(value);
+            Volatile.Write(ref this.inputDevice, applied ? value : null);
+        }
+    }
+
+    public event EventHandler? InputDeviceChanged;
+
     public event EventHandler<double>? InputLevelChanged;
+
+    /// <summary>
+    /// Point the running graph at <paramref name="device"/> (null = the system default). Return false when
+    /// the device isn't available, after falling back to the default. Not called once the session stops.
+    /// </summary>
+    protected abstract bool SelectInputDevice(AudioDevice? device);
+
+    /// <summary>
+    /// The chosen mic has gone away (or couldn't be applied at start) and the platform is back on the
+    /// default: <see cref="InputDevice"/> becomes null and, when <paramref name="notify"/>,
+    /// <see cref="InputDeviceChanged"/> fires. Call outside any platform lock.
+    /// </summary>
+    protected void OnInputDeviceUnavailable(bool notify = true)
+    {
+        if (Interlocked.Exchange(ref this.inputDevice, null) != null && notify && !this.IsStopped)
+            this.InputDeviceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal static bool SameDevice(AudioDevice? a, AudioDevice? b)
+        => a == null ? b == null : b != null && a.Id == b.Id;
 
     public void Play(ReadOnlySpan<byte> pcm16)
     {

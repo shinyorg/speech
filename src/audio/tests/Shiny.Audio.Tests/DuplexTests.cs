@@ -328,6 +328,7 @@ public class DuplexTests
         await Assert.That(o.FrameDuration).IsEqualTo(TimeSpan.FromMilliseconds(20));
         await Assert.That(o.PlaybackLatency).IsEqualTo(TimeSpan.FromMilliseconds(60));
         await Assert.That(o.MaxPlaybackLatency).IsEqualTo(TimeSpan.FromMilliseconds(200));
+        await Assert.That(o.InputDevice).IsNull();
         await Assert.That(o.FrameBytes).IsEqualTo(640);
         await Assert.That((o with { SampleRate = 8000 }).FrameBytes).IsEqualTo(320);
     }
@@ -358,6 +359,37 @@ public class DuplexTests
     }
 
 
+    static AudioDevice Mic(string id, AudioDeviceType type = AudioDeviceType.BuiltInMic, bool current = false)
+        => new(id, $"Mic {id}", AudioDeviceIo.Input, type, current);
+
+    static AudioDevice Speaker(string id)
+        => new(id, $"Speaker {id}", AudioDeviceIo.Output, AudioDeviceType.BuiltInSpeaker, false);
+
+    [Test]
+    public async Task Options_InputDevice_MustBeAnInput()
+    {
+        new AudioDuplexOptions { InputDevice = Mic("headset", AudioDeviceType.Bluetooth) }.Validate();
+
+        var o = new AudioDuplexOptions { InputDevice = Speaker("spk") };
+        await Assert.That(o.Validate).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task Slot_OutputAsInputDevice_IsRejectedBeforeStarting()
+    {
+        var slot = new AudioDuplexSlot();
+        var started = false;
+
+        await Assert.That(() => (Task)slot.StartAsync(new AudioDuplexOptions { InputDevice = Speaker("spk") }, default, (o, _) =>
+        {
+            started = true;
+            return Task.FromResult<AudioDuplexSession>(new FakeSession(o));
+        })).Throws<ArgumentException>();
+
+        await Assert.That(started).IsFalse();
+    }
+
+
     // ---- session plumbing ------------------------------------------------------------------------
 
     sealed class FakeSession(AudioDuplexOptions options, Func<Task>? onStop = null) : AudioDuplexSession(options)
@@ -366,6 +398,18 @@ public class DuplexTests
         public override bool Speakerphone { get; set; } = options.Speakerphone;
         public void Capture(ReadOnlySpan<byte> pcm) => this.OnCaptured(pcm);
         public int Pull(Span<byte> destination) => this.ReadPlayback(destination);
+
+        // The platform hook: records each switch, and reports a device as unavailable when it's listed.
+        public readonly List<AudioDevice?> Selected = [];
+        public readonly HashSet<string> Unavailable = [];
+
+        protected override bool SelectInputDevice(AudioDevice? device)
+        {
+            this.Selected.Add(device);
+            return device == null || !this.Unavailable.Contains(device.Id);
+        }
+
+        public void LoseInput(bool notify = true) => this.OnInputDeviceUnavailable(notify);
 
         protected override Task StopCoreAsync()
         {
@@ -463,6 +507,116 @@ public class DuplexTests
         session.Play(Ramp(20));
         session.Capture(Ramp(20));
         await Assert.That(session.Buffered).IsEqualTo(TimeSpan.Zero);
+    }
+
+    [Test]
+    public async Task Session_InputDevice_StartsFromOptions()
+    {
+        var mic = Mic("usb", AudioDeviceType.Usb);
+        await using var session = new FakeSession(new AudioDuplexOptions { InputDevice = mic });
+
+        await Assert.That(session.InputDevice).IsEqualTo(mic);
+        await Assert.That(session.Selected.Count).IsEqualTo(0);   // the platform applies the option itself at start
+    }
+
+    [Test]
+    public async Task Session_InputDevice_Setter_ForwardsToThePlatform()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions());
+        var headset = Mic("bt", AudioDeviceType.Bluetooth);
+
+        session.InputDevice = headset;
+        await Assert.That(session.InputDevice).IsEqualTo(headset);
+
+        session.InputDevice = null;
+        await Assert.That(session.InputDevice).IsNull();
+
+        await Assert.That(session.Selected).IsEquivalentTo(new AudioDevice?[] { headset, null });
+    }
+
+    [Test]
+    public async Task Session_InputDevice_SameIdIsANoOp()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions());
+
+        session.InputDevice = Mic("a");
+        session.InputDevice = Mic("a", current: true);   // a fresh enumeration of the same mic
+        session.InputDevice = null;
+        session.InputDevice = null;
+
+        await Assert.That(session.Selected.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Session_InputDevice_Unavailable_FallsBackToDefault()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions());
+        var raised = 0;
+        session.InputDeviceChanged += (_, _) => raised++;
+        session.Unavailable.Add("gone");
+
+        session.InputDevice = Mic("gone");
+
+        await Assert.That(session.Selected.Count).IsEqualTo(1);
+        await Assert.That(session.InputDevice).IsNull();
+        await Assert.That(raised).IsEqualTo(0);   // a response to your own set, not a platform change
+    }
+
+    [Test]
+    public async Task Session_InputDevice_OutputIsRejected()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions());
+
+        await Assert.That(() => session.InputDevice = Speaker("spk")).Throws<ArgumentException>();
+        await Assert.That(session.Selected.Count).IsEqualTo(0);
+        await Assert.That(session.InputDevice).IsNull();
+    }
+
+    [Test]
+    public async Task Session_InputDeviceLost_ResetsAndNotifiesOnce()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions { InputDevice = Mic("wired", AudioDeviceType.WiredHeadset) });
+        var raised = 0;
+        session.InputDeviceChanged += (s, _) =>
+        {
+            raised++;
+            if (!ReferenceEquals(s, session))
+                throw new Exception("Wrong sender");
+        };
+
+        session.LoseInput();
+        session.LoseInput();   // already on the default: nothing to report
+
+        await Assert.That(session.InputDevice).IsNull();
+        await Assert.That(raised).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Session_InputDeviceUnavailableAtStart_IsSilent()
+    {
+        await using var session = new FakeSession(new AudioDuplexOptions { InputDevice = Mic("gone") });
+        var raised = 0;
+        session.InputDeviceChanged += (_, _) => raised++;
+
+        session.LoseInput(notify: false);
+
+        await Assert.That(session.InputDevice).IsNull();
+        await Assert.That(raised).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Session_InputDevice_AfterStop_IsStoredButNotForwarded()
+    {
+        var session = new FakeSession(new AudioDuplexOptions());
+        var raised = 0;
+        session.InputDeviceChanged += (_, _) => raised++;
+        await session.StopAsync();
+
+        session.InputDevice = Mic("late");
+        session.LoseInput();
+
+        await Assert.That(session.Selected.Count).IsEqualTo(0);
+        await Assert.That(raised).IsEqualTo(0);
     }
 
     [Test]

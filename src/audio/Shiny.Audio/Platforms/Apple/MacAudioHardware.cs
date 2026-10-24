@@ -106,7 +106,8 @@ static class MacAudioHardware
         AudioObjectRemovePropertyListener(SystemObject, ref defaultInput, listener, IntPtr.Zero);
     }
 
-    static uint GetDefaultInputId() => GetUInt(SystemObject, DefaultInputDevice, ScopeGlobal);
+    /// <summary>The live AudioDeviceID of the system default input, or 0 when there is none.</summary>
+    public static uint GetDefaultInputId() => GetUInt(SystemObject, DefaultInputDevice, ScopeGlobal);
 
     static uint[] GetDeviceIds()
     {
