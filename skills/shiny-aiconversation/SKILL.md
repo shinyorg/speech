@@ -1,6 +1,6 @@
 ---
 name: shiny-aiconversation
-description: Generate code for Shiny.AiConversation v3 - session-based AI conversations for .NET over Microsoft.Extensions.AI with persisted, resumable sessions (IAiSessionManager / IAiSession / IAiTurn), streaming replies, the built-in ask_user tool for typed questions and multiple-choice answers, interruption and supersession, usage and context-window pressure tracking, session interceptors for tools and prompts, and a pluggable session store
+description: Generate code for Shiny.AiConversation v3 - session-based AI conversations for .NET over Microsoft.Extensions.AI with persisted, resumable sessions (IAiSessionManager / IAiSession / IAiTurn), streaming replies, the built-in ask_user tool for typed questions and multiple-choice answers, interruption and supersession, usage and context-window pressure tracking, rolling context compaction, silent assistant memory, conversation search, session titles and long-term memory, session interceptors for tools and prompts, and pluggable session/memory stores (in-memory or SQLite via Shiny.AiConversation.Stores.SqliteDocDb)
 auto_invoke: true
 triggers:
   - shiny ai
@@ -53,12 +53,31 @@ triggers:
   - openai static
   - github copilot
   - addgithubcopilotchatclient
+  - compaction
+  - compact
+  - context compaction
+  - icontextcompactor
+  - assistant memory
+  - ai memory
+  - iaimemoryservice
+  - iaimemorystore
+  - memory tool
+  - conversation search
+  - search_conversations
+  - session titles
+  - long-term memory
+  - sqlite store
+  - setsqlitedocdbstores
+  - Shiny.AiConversation.Stores.SqliteDocDb
 references:
   - registration.md
   - sessions.md
   - questions.md
   - interceptors.md
   - session-store.md
+  - compaction.md
+  - memory.md
+  - built-in-tools.md
   - chat-client-provider.md
 ---
 
@@ -81,7 +100,10 @@ The library provides:
 - **IAiTurn**: One request/response exchange including tool calls. `Events` (replayable), `Completion` (never faults), `Interrupt(spokenText)`
 - **ask_user**: Built-in terminating tool the model calls when it needs an answer. It drives `PendingQuestions` and the `AwaitingUser` state. See `questions.md`
 - **ISessionInterceptor**: Adds tools and system prompts per session (`OnSessionLoaded`) or per turn (`OnBeforeTurn`) and reacts after a turn (`OnAfterTurn`). Tools are never persisted. See `interceptors.md`
-- **IAiSessionStore**: Persists session headers and append-only messages. `InMemoryAiSessionStore` is the default. See `session-store.md`
+- **IAiSessionStore**: Persists session headers and append-only messages. `InMemoryAiSessionStore` is the default; `opts.SetSqliteDocDbStores(path)` (NuGet `Shiny.AiConversation.Stores.SqliteDocDb`) persists to SQLite. See `session-store.md`
+- **Compaction**: `session.Compact()` folds old messages into a rolling summary; runs automatically at 95% of the context window. See `compaction.md`
+- **Assistant memory**: a silent `memory` tool (on by default) plus `IAiSessionManager.Memory` (`IAiMemoryService`) so the user can see/edit/delete notes. See `memory.md`
+- **Built-in tools/interceptors**: `AddConversationSearch()`, `AddSessionTitles()`, `AddLongTermMemory()`, `AddTool(tool, flags, profiles)`. See `built-in-tools.md`
 - **IChatClientProvider**: Supplies the `IChatClient`; optional `ContextWindow`. See `chat-client-provider.md`
 
 **Provider packages**:
@@ -89,9 +111,12 @@ The library provides:
 - **Shiny.AiConversation.GithubCopilot**: `opts.AddStaticGithubCopilotChatClient(personalAccessToken, modelName)`
 - **Shiny.AiConversation.Maui.GithubCopilot**: `opts.AddGithubCopilotChatClient()` (device-code OAuth, SecureStorage)
 
+**Available now:** sessions, the SQLite store (`Shiny.AiConversation.Stores.SqliteDocDb`), compaction,
+assistant memory, conversation search, titles and long-term memory.
 **Not available in this version (being rebuilt in later v3 phases):** voice (wake word, push-to-talk,
-text-to-speech, acknowledgements, quiet words, voice-selection tools), the MAUI chat adapter
-(`Shiny.AiConversation.Maui`), the SqliteDocDb store, compaction and assistant memory. The v2 API
+text-to-speech, acknowledgements, quiet words, voice-selection tools) and the MAUI chat adapter
+(`Shiny.AiConversation.Maui`). The old `Shiny.AiConversation.MessageStores.SqliteDocDb` package is replaced by
+`Shiny.AiConversation.Stores.SqliteDocDb`. The v2 API
 (`IAiConversationService`, `TalkTo`, `ListenAndTalk`, `IMessageStore`, `IContextProvider`, `AiTurn`
 JSON envelope, `AiStructuredOutputMode`) has been **removed** - never generate code against it.
 
@@ -109,7 +134,9 @@ Invoke this skill when the user wants to:
 - Stop or replace a reply that is still generating
 - Show token usage or warn that a conversation is getting long
 - Add tools or system prompts to sessions, optionally per profile
-- Implement a custom session store
+- Implement a custom session store, or persist sessions to SQLite
+- Compact long conversations, or let the assistant remember things across sessions
+- Let the assistant search past conversations, title sessions automatically
 
 ## Code Generation Instructions
 
@@ -209,3 +236,8 @@ See `questions.md`.
 8. **Use the store's documents for history,** never raw `ChatMessage`/`ChatResponse` objects. `session.GetMessages(beforeSequence, count)` pages newest-first by `Sequence`.
 9. **Context vs. usage:** `session.Usage` is cumulative billing; `session.Context` is how full the model's window is. `Pressure` is null unless a context window is known (`AiSessionSettings.ContextWindow` or `IChatClientProvider.ContextWindow`). The library reports; the app decides what to show.
 10. **AOT:** serialize documents with `AiConversationJsonContext` (source-generated), never reflection-based `JsonSerializer` calls.
+11. **Memory is ON by default.** Every session gets the silent `memory` tool and a `<memory_index>` prompt. Turn it off with `opts.ConfigureMemory(m => m with { Enabled = false })` or per profile with `DisabledProfiles = ["private"]`. Tell users the assistant can save notes, and give them `manager.Memory` to view/edit/clear them.
+12. **Memory tool calls are ModelOnly and Silent.** They're stored as `ToolCallPart`/`ToolResultPart` with `Audience.ModelOnly`, never spoken or shown; surface them only through `MemoryChanged` (e.g. a "Remembered" chip).
+13. **Compaction runs on the turn queue.** `Compact()` waits for the active turn; auto-compaction runs after a turn completes (in the background) and before a turn that's over the threshold. Never compact from inside an interceptor turn hook.
+14. **`MessageRole.Summary` messages are UI markers.** The current summary is sent to the model from the session header; don't feed summary messages back yourself. Compacted messages stay in the store (`Compacted = true`) for history and search.
+15. **`SetDocDbStores(key)` needs `MapAiConversation()`** on that document store's options (version mapping, full-text index, JSON metadata). `SetSqliteDocDbStores(path)` does it for you.

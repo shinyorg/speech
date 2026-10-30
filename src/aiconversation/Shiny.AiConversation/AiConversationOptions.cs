@@ -14,6 +14,11 @@ public class AiConversationOptions(IServiceCollection services)
 {
     public IServiceCollection Services => services;
 
+    /// <summary>
+    /// Memory settings; change with <see cref="ConfigureMemory"/>.
+    /// </summary>
+    public AiMemoryOptions MemoryOptions { get; private set; } = new();
+
 
     /// <summary>
     /// Registers the <see cref="IChatClientProvider"/> used to obtain chat clients. Without one, an
@@ -34,6 +39,72 @@ public class AiConversationOptions(IServiceCollection services)
         where TStore : class, IAiSessionStore
     {
         services.TryAddSingleton<IAiSessionStore, TStore>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Registers the <see cref="IAiMemoryStore"/>. Defaults to <see cref="InMemoryAiMemoryStore"/>.
+    /// </summary>
+    public AiConversationOptions SetMemoryStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TStore>()
+        where TStore : class, IAiMemoryStore
+    {
+        services.TryAddSingleton<IAiMemoryStore, TStore>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Changes the assistant memory settings (limits, or <c>Enabled = false</c> to turn memory off).
+    /// </summary>
+    public AiConversationOptions ConfigureMemory(Func<AiMemoryOptions, AiMemoryOptions> configure)
+    {
+        this.MemoryOptions = configure(this.MemoryOptions);
+        return this;
+    }
+
+
+    /// <summary>
+    /// Replaces the default compactor (which asks the session's model for a rolling summary).
+    /// </summary>
+    public AiConversationOptions SetContextCompactor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCompactor>()
+        where TCompactor : class, IContextCompactor
+    {
+        services.TryAddSingleton<IContextCompactor, TCompactor>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Gives each session a short title after its first exchange (generated in the background).
+    /// </summary>
+    public AiConversationOptions AddSessionTitles()
+    {
+        services.AddSingleton<ISessionInterceptor, SessionTitleInterceptor>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Tells sessions what the user's most recent other conversations were about, from their compaction summaries.
+    /// </summary>
+    /// <param name="sessionCount">How many recent sessions to include.</param>
+    /// <param name="profiles">Limit to sessions with one of these profiles; none means every session.</param>
+    public AiConversationOptions AddLongTermMemory(int sessionCount = 3, params string[] profiles)
+    {
+        services.AddSingleton<ISessionInterceptor>(sp => new LongTermMemoryInterceptor(sp.GetRequiredService<IAiSessionStore>(), sessionCount, profiles));
+        return this;
+    }
+
+
+    /// <summary>
+    /// Lets the assistant search past conversations (and the compacted part of the current one) with the
+    /// silent <c>search_conversations</c> and <c>read_conversation</c> tools.
+    /// </summary>
+    /// <param name="profiles">Limit to sessions with one of these profiles; none means every session.</param>
+    public AiConversationOptions AddConversationSearch(params string[] profiles)
+    {
+        services.AddSingleton<ISessionInterceptor>(sp => new ConversationSearchInterceptor(sp.GetRequiredService<IAiSessionStore>(), profiles));
         return this;
     }
 

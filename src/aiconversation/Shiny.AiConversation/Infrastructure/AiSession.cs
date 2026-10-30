@@ -9,11 +9,17 @@ sealed class AiSession : IAiSession
         "Your replies are spoken aloud. Use plain conversational prose: no markdown, lists, tables, code or emoji. " +
         "Keep replies short and ask at most one question at a time.";
 
+    const string FlushPrompt =
+        "Older messages in this conversation are about to be summarized and dropped from your context. " +
+        "Save anything you will need later to memory now (facts, preferences, decisions, work in progress), then reply with OK.";
+
     readonly IAiSessionStore store;
     readonly IChatClientProvider chatClientProvider;
     readonly IReadOnlyList<ISessionInterceptor> interceptors;
     readonly TimeProvider time;
     readonly ILogger logger;
+    readonly IContextCompactor compactor;
+    readonly SessionMemory? memory;
     readonly BroadcastChannel<AiSessionEvent> events = new(e => e is TurnEventOccurred { Event: TextDelta });
     readonly SemaphoreSlim headerGate = new(1, 1);
     readonly Lock sync = new();
@@ -35,10 +41,14 @@ sealed class AiSession : IAiSession
         IChatClientProvider chatClientProvider,
         IReadOnlyList<ISessionInterceptor> interceptors,
         TimeProvider time,
+        IContextCompactor compactor,
+        IAiMemoryStore memoryStore,
+        AiMemoryOptions memoryOptions,
         ILogger logger
     )
     {
         this.header = header;
+        this.compactor = compactor;
         this.workingSet = workingSet;
         this.store = store;
         this.chatClientProvider = chatClientProvider;
@@ -46,6 +56,20 @@ sealed class AiSession : IAiSession
         this.time = time;
         this.logger = logger;
         this.state = header.PendingQuestions.Count > 0 ? AiSessionState.AwaitingUser : AiSessionState.Idle;
+
+        var profile = header.Settings.Profile;
+        if (memoryOptions.Enabled && (profile == null || !memoryOptions.DisabledProfiles.Contains(profile)))
+        {
+            this.memory = new SessionMemory(
+                memoryStore,
+                memoryOptions,
+                time,
+                header.SessionId,
+                profile,
+                (doc, change) => this.Publish(new MemoryChanged(this.SessionId, this.time.GetUtcNow(), doc, change)),
+                (scope, key, used, limit) => this.Publish(new MemoryPressureChanged(this.SessionId, this.time.GetUtcNow(), scope, key, used, limit))
+            );
+        }
     }
 
 
@@ -84,12 +108,12 @@ sealed class AiSession : IAiSession
         {
             this.sessionTools.AddRange(ctx.Tools);
             this.sessionPrompts.AddRange(ctx.SystemPrompts);
+            if (this.memory != null)
+                this.sessionTools.Add((this.memory.Tool, AiToolFlags.Silent));
         }
 
         // a resumed session gets an estimate until its first real request
-        var prompt = this.BuildPrompt(null, null);
-        var tools = this.sessionTools.Select(x => x.Tool).Append(new AskUserFunction(false, _ => { }));
-        this.SetContext(TokenEstimator.Estimate(prompt, tools), true, publish: false);
+        this.SetContext(this.EstimateContext(), true, publish: false);
     }
 
 
@@ -112,7 +136,7 @@ sealed class AiSession : IAiSession
             previous = this.activeTurn;
             turn = new AiTurn(IdGenerator.New(this.time), input, ct, this.OnInterruptedAfterCompletion);
             this.activeTurn = turn;
-            this.Enqueue(() => this.RunTurn(turn));
+            _ = this.Enqueue(() => this.RunTurn(turn));
         }
         previous?.Stop(AiTurnOutcome.Superseded);
         return turn;
@@ -127,6 +151,16 @@ sealed class AiSession : IAiSession
 
         var hasMore = list.Count > count;
         return new MessagePage(hasMore ? list.Skip(1).ToList() : list, hasMore);
+    }
+
+
+    public Task Compact(CancellationToken ct = default)
+    {
+        lock (this.sync)
+        {
+            ObjectDisposedException.ThrowIf(this.disposed, this);
+            return this.Enqueue(() => this.CompactCore(force: true, ct));
+        }
     }
 
 
@@ -177,8 +211,15 @@ sealed class AiSession : IAiSession
     }
 
 
-    void Enqueue(Func<Task> work)
-        => this.queue = this.queue.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+    /// <summary>
+    /// Turns and compaction run one at a time, in order. Call under <see cref="sync"/>.
+    /// </summary>
+    Task Enqueue(Func<Task> work)
+    {
+        var task = this.queue.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        this.queue = task.ContinueWith(_ => { }, TaskScheduler.Default);   // a failed step never breaks the chain
+        return task;
+    }
 
 
     async Task RunTurn(AiTurn turn)
@@ -195,6 +236,10 @@ sealed class AiSession : IAiSession
         try
         {
             await this.RefreshIfChanged().ConfigureAwait(false);
+
+            // safety net: never send a request that's over the auto-compaction threshold
+            if (this.NeedsCompaction())
+                await this.CompactCore(force: false, CancellationToken.None).ConfigureAwait(false);
 
             // L6: each turn replaces the pending questions
             lock (this.sync)
@@ -228,10 +273,13 @@ sealed class AiSession : IAiSession
 
             reply = await this.Append(this.NewMessage(MessageRole.Assistant, MessageSource.Model, MessageStatus.Streaming, [])).ConfigureAwait(false);
 
+            this.memory?.BeginTurn();
+            var memoryIndex = await this.TryBuildMemoryIndex(turn.Token).ConfigureAwait(false);
+
             var voice = turn.Input.Source == MessageSource.Voice;
             var toolSet = this.GetTools(turnContext, voice, q => asked = q);
             tools = toolSet.Select(x => x.Tool).ToList();
-            prompt = this.BuildPrompt(turnContext, turn.Input);
+            prompt = this.BuildPrompt(turnContext, turn.Input, memoryIndex);
 
             var client = await this.chatClientProvider.GetChatClient(turn.Token).ConfigureAwait(false);
             if (client.GetService<FunctionInvokingChatClient>() == null)
@@ -266,6 +314,16 @@ sealed class AiSession : IAiSession
 
             this.SetState(outcome == AiTurnOutcome.AwaitingUser ? AiSessionState.AwaitingUser : AiSessionState.Idle);
             this.AddTurnEvent(turn, new TurnCompleted(turn.TurnId, this.time.GetUtcNow(), result));
+
+            // compact in the background now, so the next (voice) turn doesn't wait for it
+            if (this.NeedsCompaction())
+            {
+                lock (this.sync)
+                {
+                    if (!this.disposed)
+                        _ = this.Enqueue(() => this.CompactCore(force: false, CancellationToken.None));
+                }
+            }
         }
         catch (OperationCanceledException) when (turn.Token.IsCancellationRequested)
         {
@@ -365,10 +423,10 @@ sealed class AiSession : IAiSession
 
 
     /// <summary>
-    /// Prompt assembly order: interceptor prompts, mode instructions, rolling summary, then non-compacted
-    /// history (which ends with the new user message).
+    /// Prompt assembly order: interceptor prompts, mode instructions, memory index, rolling summary, then
+    /// non-compacted history (which ends with the new user message).
     /// </summary>
-    List<ChatMessage> BuildPrompt(TurnContext? turnContext, AiInput? input)
+    List<ChatMessage> BuildPrompt(TurnContext? turnContext, AiInput? input, string? memoryIndex = null)
     {
         var system = new List<string>();
         List<AiMessageDocument> history;
@@ -386,6 +444,9 @@ sealed class AiSession : IAiSession
         if (input?.Source == MessageSource.Voice)
             system.Add(VoiceModePrompt);
 
+        if (memoryIndex != null)
+            system.Add(memoryIndex);
+
         var messages = new List<ChatMessage>();
         if (system.Count > 0)
             messages.Add(new ChatMessage(ChatRole.System, String.Join("\n\n", system)));
@@ -395,6 +456,197 @@ sealed class AiSession : IAiSession
 
         messages.AddRange(MessageMapper.ToChatMessages(history));
         return messages;
+    }
+
+
+    async Task<string?> TryBuildMemoryIndex(CancellationToken ct)
+    {
+        if (this.memory == null)
+            return null;
+
+        try
+        {
+            return await this.memory.BuildIndex(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            this.logger.LogWarning(ex, "Failed to build the memory index for session {SessionId}", this.SessionId);
+            return null;
+        }
+    }
+
+
+    bool NeedsCompaction()
+    {
+        ContextSnapshot context;
+        AiSessionSettings settings;
+        int count;
+        lock (this.sync)
+        {
+            context = this.header.Context;
+            settings = this.header.Settings;
+            count = this.workingSet.Count(x => x.Role != MessageRole.Summary);
+        }
+
+        if (settings.Compaction.AutoCompactThreshold is { } threshold && context.PercentUsed >= threshold)
+            return true;
+
+        return settings.Compaction.MaxMessages is { } max && count > max;
+    }
+
+
+    /// <summary>
+    /// Rolling compaction: the previous summary plus the oldest messages become one new summary; the
+    /// originals are marked compacted (kept for history and search). A failed summary degrades to a hard
+    /// trim, never a failed turn. Runs on the turn queue, so it never overlaps a turn.
+    /// </summary>
+    async Task CompactCore(bool force, CancellationToken ct)
+    {
+        if (!force && !this.NeedsCompaction())
+            return;
+
+        List<AiMessageDocument> candidates;
+        List<AiMessageDocument> oldSummaries;
+        AiSessionSettings settings;
+        string? previousSummary;
+        bool pending;
+        lock (this.sync)
+        {
+            candidates = this.workingSet.Where(x => x.Role != MessageRole.Summary && x.Status != MessageStatus.Streaming).ToList();
+            oldSummaries = this.workingSet.Where(x => x.Role == MessageRole.Summary).ToList();
+            settings = this.header.Settings;
+            previousSummary = this.header.Summary;
+            pending = this.header.PendingQuestions.Count > 0;
+        }
+
+        var keep = Math.Max(0, settings.Compaction.KeepRecentMessages);
+        if (settings.Compaction.MaxMessages is { } max)
+            keep = Math.Min(keep, Math.Max(0, max - 1));
+
+        if (pending)
+            keep = Math.Max(keep, 1);   // never compact the reply that asked the pending questions
+
+        var toCompact = candidates.Take(Math.Max(0, candidates.Count - keep)).ToList();
+        if (toCompact.Count == 0)
+            return;
+
+        var stateBefore = this.State;
+        this.SetState(AiSessionState.Compacting);
+        try
+        {
+            var usage = new UsageAccumulator();
+            if (settings.Compaction.FlushToMemory)
+                await this.FlushToMemory(usage, ct).ConfigureAwait(false);
+
+            string? summary = null;
+            try
+            {
+                summary = await this.compactor.Summarize(previousSummary, toCompact, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                this.logger.LogWarning(ex, "Summarizing session {SessionId} failed; hard-trimming instead", this.SessionId);
+            }
+
+            var hardTrim = String.IsNullOrWhiteSpace(summary);
+            AiMessageDocument? summaryMessage = null;
+            if (!hardTrim)
+            {
+                summaryMessage = await this.Append(this.NewMessage(
+                    MessageRole.Summary,
+                    MessageSource.Compaction,
+                    MessageStatus.Complete,
+                    [new TextPart(summary!, Audience.Displayed)]
+                )).ConfigureAwait(false);
+            }
+
+            // summaries never pile up: the previous summary message is compacted along with the originals
+            var compacted = new List<string>();
+            foreach (var msg in toCompact.Concat(oldSummaries))
+            {
+                await this.store.UpdateMessage(msg with { Compacted = true, CompactedIntoMessageId = summaryMessage?.MessageId }, CancellationToken.None).ConfigureAwait(false);
+                compacted.Add(msg.MessageId);
+            }
+
+            lock (this.sync)
+                this.workingSet.RemoveAll(x => compacted.Contains(x.MessageId));
+
+            await this.SaveHeader(h => h with
+            {
+                Summary = hardTrim ? h.Summary : summary,
+                Usage = usage.Requests > 0 ? usage.AddTo(h.Usage) : h.Usage
+            }, retryOnConflict: true, CancellationToken.None).ConfigureAwait(false);
+
+            this.SetContext(this.EstimateContext(), true, publish: true);
+            this.Publish(new ContextCompacted(this.SessionId, this.time.GetUtcNow(), summaryMessage, toCompact.Count, hardTrim));
+
+            var ctx = new CompactionContext(this, summaryMessage, hardTrim);
+            foreach (var interceptor in this.interceptors)
+            {
+                try
+                {
+                    await interceptor.OnCompacted(ctx).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    this.logger.LogError(ex, "Interceptor {Interceptor} failed after compaction", interceptor.GetType().Name);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            this.logger.LogError(ex, "Compaction failed for session {SessionId}", this.SessionId);
+            this.Publish(new SessionError(this.SessionId, this.time.GetUtcNow(), ex));
+            if (force)
+                throw;
+        }
+        finally
+        {
+            this.SetState(stateBefore == AiSessionState.Compacting ? AiSessionState.Idle : stateBefore);
+        }
+    }
+
+
+    /// <summary>
+    /// Memory is the durable layer and the summary the lossy one, so before compacting the model gets one
+    /// silent request to save what it will need. Nothing from it is persisted except memory writes.
+    /// </summary>
+    async Task FlushToMemory(UsageAccumulator usage, CancellationToken ct)
+    {
+        if (this.memory == null)
+            return;
+
+        try
+        {
+            this.memory.BeginTurn();
+            var prompt = this.BuildPrompt(null, null, await this.memory.BuildIndex(ct).ConfigureAwait(false));
+            prompt.Add(new ChatMessage(ChatRole.User, FlushPrompt));
+
+            var client = await this.chatClientProvider.GetChatClient(ct).ConfigureAwait(false);
+            if (client.GetService<FunctionInvokingChatClient>() == null)
+                client = client.AsBuilder().UseFunctionInvocation().Build();
+
+            await foreach (var update in client.GetStreamingResponseAsync(prompt, new ChatOptions { Tools = [this.memory.Tool] }, ct).ConfigureAwait(false))
+            {
+                foreach (var u in update.Contents.OfType<UsageContent>())
+                    usage.Add(u.Details);
+            }
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            this.logger.LogWarning(ex, "Memory flush before compaction failed for session {SessionId}", this.SessionId);
+        }
+    }
+
+
+    long EstimateContext()
+    {
+        List<AITool> tools;
+        lock (this.sync)
+            tools = this.sessionTools.Select(x => x.Tool).ToList();
+
+        tools.Add(new AskUserFunction(false, _ => { }));
+        return TokenEstimator.Estimate(this.BuildPrompt(null, null), tools);
     }
 
 

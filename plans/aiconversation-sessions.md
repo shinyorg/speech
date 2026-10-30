@@ -1,6 +1,6 @@
 # Shiny.AiConversation v3 — Session-Based Rewrite
 
-Status: **Phase 1 done (2026-10-29)** · Branch: `v3` · Started: 2026-10-21
+Status: **Phases 1–2 done (2026-10-29)** · Branch: `v3` · Started: 2026-10-21
 
 All contracts consolidated in [aiconversation-contracts.md](aiconversation-contracts.md); it is the source of truth when the two differ.
 
@@ -333,9 +333,10 @@ The store is the only source of truth. The manager holds no sessions, no registr
   - Two simultaneous turns on one session: the second header save fails the version check, and that turn
     gets a `SessionConflictException`. Sharing one instance (e.g. pass the voice driver's instance to the
     chat page) avoids this entirely, and the docs should recommend it.
-- **Spike:** confirm Shiny.DocumentDb supports a conditional update (or a transaction) for the version
-  check and atomic sequence allocation. If not, the store contract needs `TryUpdateSession(doc, expectedVersion)`
-  implemented with a transaction.
+- **Spike (done, Phase 2, Shiny.DocumentDb 10.0.2):** `MapVersionProperty` gives a database-checked
+  optimistic update (`ConcurrencyException`), and `CreateUnitOfWork().SaveChanges()` is atomic (a version
+  conflict rolls back the whole unit). The store wraps the header in a versioned document and allocates
+  sequences from a versioned per-session counter written in the same unit as the message. No contract change.
 
 **Recovery is lazy, at load time (no start-up sweep)**
 - There's no registry to say whether a session is "live", so recovery happens in `Get`:
@@ -604,8 +605,9 @@ Typical asks: "what was that recipe we talked about last month?", "what did I sa
 
 **Search quality**
 - Phase 2: store-level text search. `MessageQuery.Text` today is a `LIKE`/`Contains`, which misses word
-  variations and has no ranking. Spike: whether Shiny.DocumentDb (SQLite) can use FTS5 for ranked search;
-  if not, add a simple term-match ranking in the store.
+  variations and has no ranking. **Spike (done):** Shiny.DocumentDb's `MapFullTextProperty` + `FullTextSearch`
+  give ranked, stemmed full-text search with a pushed-down pre-filter, used by the SQLite store. The in-memory
+  store does word-prefix term matching with stop words removed (`SearchText`).
 - Later: optional semantic search via MEAI `IEmbeddingGenerator` (embed messages on write, vector search on
   query), behind the same tool. The store interface gets an optional `ISemanticSearchStore`.
 
@@ -801,17 +803,34 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
 - `Audience` on `MessagePart` and the `Silent` tool flag landed in Phase 1 (they were listed in Phase 2).
 - Differences from the contracts are listed at the top of [aiconversation-contracts.md](aiconversation-contracts.md).
 
-### Phase 2 — Persistence & context management
-- [ ] `DocumentDbAiSessionStore` (SqliteDocDb): two document types, indexes on `SessionId`+`Sequence`, `LastActivity`.
-- [ ] Rename the store package to `Shiny.AiConversation.Stores.SqliteDocDb` (D2a) and put it back in `Build.slnf`.
-- [ ] Rolling compaction (`IContextCompactor`, LLM summary, post-turn background run, hard-trim + message-cap fallbacks).
-- [ ] Title interceptor, long-term memory interceptor.
-- [ ] `search_conversations` / `read_conversation` (§5.7); spike FTS5 in Shiny.DocumentDb; `ExcludeFromSearch`.
-- [ ] Memory (§4.8): `IAiMemoryStore` (in-memory + SqliteDocDb), `memory` tool, prompt index, soft limits,
+### Phase 2 — Persistence & context management (done 2026-10-29)
+- [x] `DocumentDbAiSessionStore` (SqliteDocDb): two document types, indexes on `SessionId`+`Sequence`, `LastActivity`.
+- [x] Rename the store package to `Shiny.AiConversation.Stores.SqliteDocDb` (D2a) and put it back in `Build.slnf`.
+- [x] Rolling compaction (`IContextCompactor`, LLM summary, post-turn background run, hard-trim + message-cap fallbacks).
+- [x] Title interceptor, long-term memory interceptor.
+- [x] `search_conversations` / `read_conversation` (§5.7); spike FTS5 in Shiny.DocumentDb; `ExcludeFromSearch`.
+- [x] Memory (§4.8): `IAiMemoryStore` (in-memory + SqliteDocDb), `memory` tool, prompt index, soft limits,
       pre-compaction flush, `IAiMemoryService` for apps, `MemoryChanged` / `MemoryPressureChanged` events.
-- [ ] `Audience` on `MessagePart`; `Silent` tool flag.
-- [ ] Spike: Shiny.DocumentDb conditional update / transaction for `Version` + `Sequence`.
+- [x] `Audience` on `MessagePart`; `Silent` tool flag. (Landed in Phase 1.)
+- [x] Spike: Shiny.DocumentDb conditional update / transaction for `Version` + `Sequence`. (§4.6)
 - [x] ~~Decide on and build (or skip) the v2 importer.~~ Skipped (D5).
+
+**Phase 2 notes**
+- One contract test suite (`StoreContractTests`) runs against both the in-memory and SQLite stores, including
+  20 concurrent appends. 91 tests total.
+- `SetSqliteDocDbStores(path)` registers both stores; `SetDocDbStores(key)` uses an existing named document
+  store, whose options must call `MapAiConversation()`. Storage wrappers (`StoredAiSession`, `StoredAiMessage`,
+  `StoredAiSequence`, `StoredAiMemory`) carry the id, version and denormalized query fields.
+- The current summary goes into the prompt from the session header; `Summary` messages are history markers for
+  the UI and are skipped by the mapper.
+- The pre-compaction memory flush is one silent request with only the `memory` tool; nothing from it is persisted
+  except memory writes and usage.
+- Memory is on by default (`ConfigureMemory(m => m with { Enabled = false })` or `DisabledProfiles` to turn it off).
+  The `memory` tool defaults to the global scope for `create` and looks in session → profile → global otherwise.
+- Titles are generated in the background after the first exchange, so the next turn never waits; no refresh on
+  compaction yet.
+- `SQLitePCLRaw.bundle_e_sqlite3` is pinned to 2.1.14 because Shiny.DocumentDb.Sqlite 10.0.2 brings 2.1.11
+  (advisory GHSA-2m69-gcr7-jv3q). Drop the pin when DocumentDb is upgraded.
 
 ### Phase 3 — Voice
 - [ ] `IVoiceConversation` loop: PTT, wake word, follow-up (L4, L5).

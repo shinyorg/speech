@@ -12,11 +12,21 @@ public class AiSessionManager(
     IChatClientProvider chatClientProvider,
     IEnumerable<ISessionInterceptor> interceptors,
     TimeProvider timeProvider,
+    IAiMemoryStore? memoryStore = null,
+    AiMemoryOptions? memoryOptions = null,
+    IContextCompactor? compactor = null,
     ILogger<AiSessionManager>? logger = null
 ) : IAiSessionManager
 {
     readonly IReadOnlyList<ISessionInterceptor> interceptors = interceptors.ToList();
+    readonly IAiMemoryStore memoryStore = memoryStore ?? new InMemoryAiMemoryStore();
+    readonly AiMemoryOptions memoryOptions = memoryOptions ?? new AiMemoryOptions();
+    readonly IContextCompactor compactor = compactor ?? new ChatClientContextCompactor(chatClientProvider);
     readonly ILogger logger = logger ?? NullLogger<AiSessionManager>.Instance;
+    IAiMemoryService? memory;
+
+
+    public IAiMemoryService Memory => this.memory ??= new AiMemoryService(this.memoryStore, timeProvider);
 
 
     public async Task<IAiSession> Start(AiSessionSettings? settings = null, CancellationToken ct = default)
@@ -60,8 +70,11 @@ public class AiSessionManager(
         => store.QuerySessions(query, ct);
 
 
-    public Task Delete(string sessionId, CancellationToken ct = default)
-        => store.DeleteSession(sessionId, ct);
+    public async Task Delete(string sessionId, CancellationToken ct = default)
+    {
+        await store.DeleteSession(sessionId, ct).ConfigureAwait(false);
+        await this.memoryStore.Clear(MemoryScope.Session, sessionId, ct).ConfigureAwait(false);
+    }
 
 
     async Task<IAiSession> Load(AiSessionDocument header, CancellationToken ct)
@@ -73,7 +86,18 @@ public class AiSessionManager(
 
     async Task<IAiSession> Create(AiSessionDocument header, List<AiMessageDocument> messages, bool isNew, CancellationToken ct)
     {
-        var session = new AiSession(header, messages, store, chatClientProvider, this.interceptors, timeProvider, this.logger);
+        var session = new AiSession(
+            header,
+            messages,
+            store,
+            chatClientProvider,
+            this.interceptors,
+            timeProvider,
+            this.compactor,
+            this.memoryStore,
+            this.memoryOptions,
+            this.logger
+        );
         await session.Load(isNew, ct).ConfigureAwait(false);
         return session;
     }

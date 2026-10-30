@@ -58,4 +58,19 @@ public record ContextPressureChanged(string SessionId, DateTimeOffset Timestamp,
 
 public record TitleChanged(string SessionId, DateTimeOffset Timestamp, string? Title) : AiSessionEvent(SessionId, Timestamp);
 
+/// <summary>
+/// Older messages were folded into a rolling summary (or hard-trimmed when summarizing failed).
+/// </summary>
+public record ContextCompacted(string SessionId, DateTimeOffset Timestamp, AiMessageDocument? Summary, int CompactedCount, bool WasHardTrim) : AiSessionEvent(SessionId, Timestamp);
+
+/// <summary>
+/// The assistant changed one of its memory documents.
+/// </summary>
+public record MemoryChanged(string SessionId, DateTimeOffset Timestamp, AiMemoryDocument Document, MemoryChange Change) : AiSessionEvent(SessionId, Timestamp);
+
+/// <summary>
+/// A memory scope is at or over its size limit, so the assistant's writes to it are being refused.
+/// </summary>
+public record MemoryPressureChanged(string SessionId, DateTimeOffset Timestamp, MemoryScope Scope, string? ScopeKey, long UsedBytes, long? LimitBytes) : AiSessionEvent(SessionId, Timestamp);
+
 public record SessionError(string SessionId, DateTimeOffset Timestamp, Exception Error) : AiSessionEvent(SessionId, Timestamp);

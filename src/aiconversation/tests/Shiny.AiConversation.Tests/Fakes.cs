@@ -74,7 +74,7 @@ public class FakeChatClient : IChatClient
     }
 
     public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+        => this.GetStreamingResponseAsync(messages, options, cancellationToken).ToChatResponseAsync(cancellationToken);
 
     public object? GetService(Type serviceType, object? serviceKey = null) => null;
     public void Dispose() { }
@@ -85,6 +85,22 @@ public class FakeChatClient : IChatClient
 
     public static FunctionCallContent AskUser(string callId, string json)
         => new(callId, AskUserFunction.ToolName, new Dictionary<string, object?> { ["questions"] = System.Text.Json.JsonDocument.Parse(json).RootElement.Clone() });
+}
+
+
+public class FakeCompactor : IContextCompactor
+{
+    public List<(string? Previous, IReadOnlyList<AiMessageDocument> Messages)> Calls { get; } = [];
+    public Exception? Throw { get; set; }
+
+    public Task<string> Summarize(string? previousSummary, IReadOnlyList<AiMessageDocument> messages, CancellationToken ct)
+    {
+        this.Calls.Add((previousSummary, messages));
+        if (this.Throw != null)
+            throw this.Throw;
+
+        return Task.FromResult($"summary {this.Calls.Count}: " + String.Join(" / ", messages.Select(x => x.Text)));
+    }
 }
 
 
@@ -194,8 +210,35 @@ public static class TestHelpers
     {
         var chat = new FakeChatClient();
         var store = new InMemoryAiSessionStore();
-        var manager = new AiSessionManager(store, new FakeChatClientProvider(chat, contextWindow), interceptors, TimeProvider.System);
+        // memory off by default so tests see only the tools they add; memory tests turn it on
+        var manager = new AiSessionManager(store, new FakeChatClientProvider(chat, contextWindow), interceptors, TimeProvider.System, memoryOptions: new AiMemoryOptions { Enabled = false });
         return (manager, store, chat);
+    }
+
+    public static Harness CreateHarness(
+        int? contextWindow = null,
+        AiMemoryOptions? memory = null,
+        IAiSessionStore? store = null,
+        IAiMemoryStore? memoryStore = null,
+        params ISessionInterceptor[] interceptors
+    )
+    {
+        var h = new Harness(
+            new FakeChatClient(),
+            store ?? new InMemoryAiSessionStore(),
+            memoryStore ?? new InMemoryAiMemoryStore(),
+            new FakeCompactor()
+        );
+        h.Manager = new AiSessionManager(
+            h.Store,
+            new FakeChatClientProvider(h.Chat, contextWindow),
+            interceptors,
+            TimeProvider.System,
+            h.MemoryStore,
+            memory ?? new AiMemoryOptions { Enabled = false },
+            h.Compactor
+        );
+        return h;
     }
 
     public static async Task<AiTurnResult> WaitAsync(this IAiTurn turn)
@@ -203,4 +246,10 @@ public static class TestHelpers
 
     public static IEnumerable<string> Texts(this IEnumerable<ChatMessage> messages, ChatRole role)
         => messages.Where(x => x.Role == role).Select(x => x.Text);
+}
+
+
+public record Harness(FakeChatClient Chat, IAiSessionStore Store, IAiMemoryStore MemoryStore, FakeCompactor Compactor)
+{
+    public AiSessionManager Manager { get; set; } = null!;
 }

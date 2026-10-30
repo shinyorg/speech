@@ -3,7 +3,33 @@
 Persists two document types: a small **session header** (`AiSessionDocument`, updated in place) and
 append-only **messages** (`AiMessageDocument`). The store is the only source of truth; the manager
 keeps nothing in memory. `InMemoryAiSessionStore` is the default (register a custom one with
-`opts.SetSessionStore<T>()`). The SqliteDocDb store is being rebuilt and is not available yet.
+`opts.SetSessionStore<T>()`), or use the SQLite store below.
+
+## SQLite store (`Shiny.AiConversation.Stores.SqliteDocDb`)
+
+```csharp
+builder.Services.AddShinyAiConversation(opts =>
+{
+    opts.SetSqliteDocDbStores(Path.Combine(FileSystem.AppDataDirectory, "ai.db"));   // sessions, messages AND memory
+});
+```
+
+Already have a named Shiny.DocumentDb store? Add the mappings to its options and point at it:
+
+```csharp
+services.AddDocumentStore("main", o =>
+{
+    o.DatabaseProvider = new SqliteDatabaseProvider("Data Source=app.db");
+    o.MapAiConversation();      // required: JSON metadata, version mapping, full-text index on message text
+});
+services.AddShinyAiConversation(opts => opts.SetDocDbStores("main"));
+```
+
+Guarantees (`DocumentDbAiSessionStore` / `DocumentDbAiMemoryStore`):
+- Header saves and memory saves are version-checked by the database (`SessionConflictException` / `MemoryConflictException`).
+- Message sequences come from a versioned per-session counter saved in the same transaction as the message, so concurrent writers (even across processes) never share a sequence.
+- `SearchMessages` uses the database's ranked, stemmed full-text index (FTS5 on SQLite).
+- Documents are stored inside wrapper documents (`StoredAiSession`, `StoredAiMessage`, `StoredAiSequence`, `StoredAiMemory`) serialized with `AiConversationStoreJsonContext`.
 
 ## Interface
 
@@ -43,7 +69,15 @@ public interface IAiSessionStore
 7. **`DeleteSession`** cascades to the session's messages. **`Purge`** deletes sessions whose
    `LastActivity` is before the cutoff.
 8. **`SearchMessages`** searches only `User`/`Assistant` messages' `Text`, skips sessions with
-   `Settings.ExcludeFromSearch`, and returns ranked `MessageSearchHit`s with a short snippet.
+   `Settings.ExcludeFromSearch`, honours `SessionId` / `ExcludeSessionId` / `From` / `To` /
+   `ExcludeFromSequence` (messages at or after it are excluded), and returns ranked `MessageSearchHit`s
+   with a short snippet. Use the `SearchText` helper for term splitting and snippets:
+
+```csharp
+var terms = SearchText.Terms(query.Text);                 // punctuation, possessives, stop words removed
+var matched = terms.Count(t => SearchText.ContainsTerm(msg.Text!, t));   // word-prefix match
+var snippet = SearchText.Snippet(msg.Text!, terms);
+```
 9. **Serialize with `AiConversationJsonContext`** (source-generated, AOT safe, camelCase, string enums;
    `MessagePart` is polymorphic with a `kind` discriminator):
 

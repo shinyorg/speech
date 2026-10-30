@@ -18,6 +18,7 @@
             "src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj",
             "src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj",
             "src/aiconversation/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj",
+            "src/aiconversation/Shiny.AiConversation.Stores.SqliteDocDb/Shiny.AiConversation.Stores.SqliteDocDb.csproj",
             "src/aiconversation/tests/Shiny.AiConversation.Tests/Shiny.AiConversation.Tests.csproj"
         ]
     }

@@ -52,6 +52,12 @@ public interface IAiSession : IAsyncDisposable
     /// <param name="count">The page size.</param>
     Task<MessagePage> GetMessages(long? beforeSequence, int count, CancellationToken ct = default);
 
+    /// <summary>
+    /// Folds older messages into the rolling summary now. Runs after any active turn; compaction also runs
+    /// automatically as a safety net at <see cref="CompactionSettings.AutoCompactThreshold"/>.
+    /// </summary>
+    Task Compact(CancellationToken ct = default);
+
     Task SetTitle(string title, CancellationToken ct = default);
     Task UpdateSettings(Func<AiSessionSettings, AiSessionSettings> update, CancellationToken ct = default);
 }

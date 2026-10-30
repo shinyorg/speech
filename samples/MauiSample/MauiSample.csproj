@@ -46,7 +46,7 @@
         <ProjectReference Include="..\..\src\speech\Shiny.Speech.Typecast\Shiny.Speech.Typecast.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui\Shiny.AiConversation.Maui.csproj"/>
-        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.MessageStores.SqliteDocDb\Shiny.AiConversation.MessageStores.SqliteDocDb.csproj"/>
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Stores.SqliteDocDb\Shiny.AiConversation.Stores.SqliteDocDb.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui.GithubCopilot\Shiny.AiConversation.Maui.GithubCopilot.csproj"/>
     </ItemGroup>
 </Project>

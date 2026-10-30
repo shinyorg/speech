@@ -13,6 +13,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../Shiny.AiConversation/Shiny.AiConversation.csproj"/>
+        <ProjectReference Include="../../Shiny.AiConversation.Stores.SqliteDocDb/Shiny.AiConversation.Stores.SqliteDocDb.csproj"/>
     </ItemGroup>
 
 </Project>

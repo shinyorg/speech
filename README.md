@@ -27,7 +27,7 @@ the AI conversation loop running in the browser. Source: [`samples/BlazorSample`
 | **Shiny.AiConversation.Maui** | `AiChatView` — a .NET MAUI chat control (built on Shiny.Maui.Controls `ChatView`). *Being rebuilt on v3 sessions* | net10.0 (MAUI) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
-| **Shiny.AiConversation.MessageStores.SqliteDocDb** | SQLite/DocumentDb-backed chat history. *Being replaced by a v3 `IAiSessionStore`* | net10.0 |
+| **Shiny.AiConversation.Stores.SqliteDocDb** | SQLite (Shiny.DocumentDb) session, message and memory stores with full-text search (renamed from `MessageStores.SqliteDocDb`) | net10.0 |
 
 ## Getting Started
 
@@ -948,10 +948,10 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 
 > The package-level readme lives at [`src/aiconversation/readme.md`](src/aiconversation/readme.md).
 
-> **v3 is a rewrite in progress.** The core text-session API below is done. The voice loop (wake word,
-> text-to-speech, interruption, acknowledgements), the MAUI chat adapter and the SQLite session store are
-> being rebuilt on top of sessions and are not in this version yet. The core package no longer depends on
-> Shiny.Speech or Shiny.Audio.
+> **v3 is a rewrite in progress.** Text sessions, persistence (SQLite), compaction, assistant memory and
+> conversation search are done. The voice loop (wake word, text-to-speech, interruption, acknowledgements)
+> and the MAUI chat adapter are being rebuilt on top of sessions and are not in this version yet. The core
+> package no longer depends on Shiny.Speech or Shiny.Audio.
 
 ## Features
 
@@ -963,6 +963,10 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 - **Interceptors** — `ISessionInterceptor` adds tools and system prompts per session (`OnSessionLoaded`) or per turn (`OnBeforeTurn`), optionally by `Profile`
 - **Honest persistence** — the user message is stored before the model is called and the reply is stored as streaming then finalized, so failures and crashes leave an accurate record. Tool calls are persisted too
 - **One event stream** — `session.GetEvents()` is an `IAsyncEnumerable` that starts with a `Snapshot`, so a UI binds to one ordered stream
+- **Compaction** — sessions never end, so older messages are folded into a rolling summary: on demand with `session.Compact()`, or automatically as a safety net near the context limit. A failed summary degrades to a hard trim, never a failed turn
+- **Assistant memory** — a silent `memory` tool lets the AI keep notes across conversations (session, profile or global scope) without reading them aloud. Only an index goes into each prompt, limits are fed back to the model, and `manager.Memory` lets the user see, edit and delete everything. On by default
+- **Conversation search** — opt-in `search_conversations` / `read_conversation` tools find things in past (and compacted) conversations; plus optional session titles and long-term memory from recent sessions' summaries
+- **SQLite persistence** — `Shiny.AiConversation.Stores.SqliteDocDb` stores sessions, messages and memory with database-checked concurrency and full-text search
 
 ## Quick Start
 
@@ -972,9 +976,13 @@ builder.Services.AddChatClient(new OpenAIClient("your-api-key").GetChatClient("g
 
 builder.Services.AddShinyAiConversation(opts =>
 {
+    opts.SetSqliteDocDbStores(Path.Combine(FileSystem.AppDataDirectory, "ai.db"));   // default: in-memory
     opts.AddInterceptor<MyInterceptor>();                       // optional: tools + prompts
     opts.AddTool(AIFunctionFactory.Create(GetWeather), AiToolFlags.None);
-    // opts.SetSessionStore<MyStore>();                         // default: in-memory
+    opts.AddSessionTitles();                                    // optional built-ins
+    opts.AddConversationSearch();
+    opts.AddLongTermMemory();
+    // opts.ConfigureMemory(m => m with { Enabled = false });   // memory is on by default
 });
 ```
 
@@ -1045,7 +1053,10 @@ await foreach (var e in session.GetEvents(ct))   // first item is always a Snaps
 | `AiInput` | `Text(...)`, `Voice(...)` (asks for spoken-style replies and at most one question), `Answer(question, choiceIds)` |
 | `AiSessionSettings` | Persisted per session: `Profile`, `ContextWindow`, warning/critical thresholds, `Tags`, `Metadata`, `ExcludeFromSearch` |
 | `ISessionInterceptor` | `OnSessionLoaded` (runs on Start **and** every Get), `OnBeforeTurn`, `OnAfterTurn` |
-| `IAiSessionStore` | Session headers + append-only messages. `InMemoryAiSessionStore` is the default; serialize with `AiConversationJsonContext` |
+| `IAiSessionStore` | Session headers + append-only messages. `InMemoryAiSessionStore` is the default; `SetSqliteDocDbStores(path)` for SQLite |
+| `IAiMemoryService` | `manager.Memory`: list, view, edit and delete what the assistant remembers ("forget everything" = `Clear()`) |
+| `CompactionSettings` | Per session: `AutoCompactThreshold` (0.95, null disables), `KeepRecentMessages`, `MaxMessages`, `FlushToMemory` |
+| `AiMemoryOptions` | `Enabled`, `DisabledProfiles` and the soft limits (document size, index size, scope size, writes per turn) |
 | `IChatClientProvider` | Supplies the `IChatClient`; optional `ContextWindow`. The session adds function invocation itself when the client lacks it |
 
 ## Dependencies

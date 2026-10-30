@@ -161,8 +161,8 @@ public class AiSessionManagerTests
         await cooking.Send(AiInput.Text("hi")).WaitAsync();
 
         string Tools(int i) => String.Join(",", chat.Requests[i].Options!.Tools!.Select(x => x.Name).Order());
-        await Assert.That(Tools(0)).IsEqualTo("ask_user,everywhere");
-        await Assert.That(Tools(1)).IsEqualTo("ask_user,cooking_only,everywhere");
+        await Assert.That(Tools(0)).IsEqualTo("ask_user,everywhere,memory");
+        await Assert.That(Tools(1)).IsEqualTo("ask_user,cooking_only,everywhere,memory");
 
         // the default interceptor adds the current time to every turn
         await Assert.That(chat.Requests[0].Messages[0].Text.StartsWith("The current time is")).IsTrue();

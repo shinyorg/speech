@@ -15,8 +15,15 @@ Items marked `// NEW` were added while consolidating (gaps the plan referenced b
   error is on `AiTurnResult.Error`.
 - Registration is `AddShinyAiConversation(o => ...)` with `SetChatClientProvider`, `SetSessionStore`,
   `AddInterceptor` and `AddTool(tool, flags, params profiles)`.
-- Not built yet (their phase): `Compact`, `IContextCompactor`, `ContextCompacted`, memory API/events,
-  attachments / `ImagePart` / `WithImage`.
+- Phase 2 built `Compact`, `IContextCompactor`, `ContextCompacted`, `ISessionInterceptor.OnCompacted`, the
+  memory API (`IAiMemoryStore`, `IAiMemoryService` on the manager, `AiMemoryOptions`) and memory events.
+  `ContextCompacted` and `CompactionContext` carry a nullable summary plus `WasHardTrim`; `ContextCompacted`
+  also has `CompactedCount`. `AiMemoryOptions` adds `Enabled` and `DisabledProfiles`. `IAiMemoryService.Save`
+  returns the saved document. `MemoryConflictException` added.
+- Registration adds `SetMemoryStore`, `ConfigureMemory`, `SetContextCompactor`, `AddSessionTitles`,
+  `AddLongTermMemory(sessionCount, profiles)`, `AddConversationSearch(profiles)`; the store package adds
+  `SetSqliteDocDbStores(path)` / `SetDocDbStores(key)`.
+- Not built yet (their phase): attachments / `ImagePart` / `WithImage` (Phase 4).
 
 ## 1. Core — manager, session, turn
 

@@ -23,8 +23,16 @@ builder.Services.AddShinyAiConversation(opts =>
     // Option C: GitHub Copilot with device code auth (NuGet: Shiny.AiConversation.Maui.GithubCopilot)
     opts.AddGithubCopilotChatClient();
 
-    // Optional: persistent store (default keeps sessions in memory)
+    // Optional: persistent stores (default keeps sessions and memory in memory)
+    // opts.SetSqliteDocDbStores(Path.Combine(FileSystem.AppDataDirectory, "ai.db"));   // NuGet: Shiny.AiConversation.Stores.SqliteDocDb
     // opts.SetSessionStore<MySessionStore>();
+    // opts.SetMemoryStore<MyMemoryStore>();
+
+    // Optional: built-in features
+    opts.AddSessionTitles();
+    opts.AddConversationSearch();
+    opts.AddLongTermMemory(sessionCount: 3);
+    // opts.ConfigureMemory(m => m with { Enabled = false });
 
     // Optional: tools and prompts
     opts.AddInterceptor<AssistantInterceptor>();
@@ -46,6 +54,26 @@ Then inject `IAiSessionManager` wherever you need a session.
 - **Optional** - defaults to `InMemoryAiSessionStore` (nothing survives a restart)
 - Registers `T` as a singleton `IAiSessionStore` (`TryAddSingleton`)
 
+### SetMemoryStore<T>()
+- **Optional** - defaults to `InMemoryAiMemoryStore`
+- Registers `T` as a singleton `IAiMemoryStore` (`TryAddSingleton`)
+
+### ConfigureMemory(Func<AiMemoryOptions, AiMemoryOptions>)
+- Memory limits and on/off: `Enabled` (default true), `DisabledProfiles`, `MaxDocumentBytes` (16 KB),
+  `MaxIndexEntries` (50), `MaxIndexTokens` (1500), `MaxScopeBytes` (256 KB), `MaxWritesPerTurn` (20); null disables a limit
+- See `memory.md`
+
+### SetContextCompactor<T>()
+- **Optional** - defaults to `ChatClientContextCompactor` (asks the session's model for a rolling summary)
+- See `compaction.md`
+
+### AddSessionTitles() / AddConversationSearch(params string[] profiles) / AddLongTermMemory(int sessionCount = 3, params string[] profiles)
+- Built-in interceptors; see `built-in-tools.md`
+
+### SetSqliteDocDbStores(string databasePath) / SetDocDbStores(string documentStoreKey)
+- From `Shiny.AiConversation.Stores.SqliteDocDb`; registers both `IAiSessionStore` and `IAiMemoryStore`
+- See `session-store.md`
+
 ### AddInterceptor<T>()
 - Registers an `ISessionInterceptor` singleton; multiple are supported and run in registration order
 - See `interceptors.md`
@@ -61,6 +89,9 @@ Then inject `IAiSessionManager` wherever you need a session.
 - `TimeProvider.System`
 - `InjectedChatClientProvider` as `IChatClientProvider`
 - `InMemoryAiSessionStore` as `IAiSessionStore`
+- `InMemoryAiMemoryStore` as `IAiMemoryStore`
+- `ChatClientContextCompactor` as `IContextCompactor`
+- `AiMemoryOptions` (from `ConfigureMemory`)
 - `AiSessionManager` as `IAiSessionManager`
 - `DefaultSessionInterceptor` - adds tools from `AddTool` / DI to each session and the current local time as a system prompt on every turn
 
@@ -78,7 +109,8 @@ var session = await manager.Start(new AiSessionSettings
     ContextWarningThreshold = 0.75,
     ContextCriticalThreshold = 0.90,
     Tags = ["kitchen"],
-    ExcludeFromSearch = false,
+    ExcludeFromSearch = false,     // keep out of conversation search / long-term memory
+    Compaction = new CompactionSettings { KeepRecentMessages = 10, AutoCompactThreshold = 0.95 },
     Metadata = new Dictionary<string, string> { ["recipeId"] = "42" }
 });
 

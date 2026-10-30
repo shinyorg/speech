@@ -147,7 +147,7 @@ public class InMemoryAiSessionStore : IAiSessionStore
 
     public Task<IReadOnlyList<MessageSearchHit>> SearchMessages(MessageSearchQuery query, CancellationToken ct = default)
     {
-        var terms = query.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var terms = SearchText.Terms(query.Text);
         if (terms.Length == 0)
             return Task.FromResult<IReadOnlyList<MessageSearchHit>>([]);
 
@@ -180,7 +180,7 @@ public class InMemoryAiSessionStore : IAiSessionStore
                     if (query.ExcludeFromSequence != null && msg.Sequence >= query.ExcludeFromSequence)
                         continue;
 
-                    var matched = terms.Count(t => Contains(msg.Text, t));
+                    var matched = terms.Count(t => SearchText.ContainsTerm(msg.Text, t));
                     if (matched == 0)
                         continue;
 
@@ -190,7 +190,7 @@ public class InMemoryAiSessionStore : IAiSessionStore
                         msg.Sequence,
                         msg.Role,
                         msg.Timestamp,
-                        Snippet(msg.Text, terms),
+                        SearchText.Snippet(msg.Text, terms),
                         (double)matched / terms.Length
                     ));
                 }
@@ -223,26 +223,4 @@ public class InMemoryAiSessionStore : IAiSessionStore
 
     static bool Contains(string? text, string value)
         => text?.Contains(value, StringComparison.OrdinalIgnoreCase) == true;
-
-    static string Snippet(string text, string[] terms)
-    {
-        const int radius = 80;
-        var index = terms
-            .Select(t => text.IndexOf(t, StringComparison.OrdinalIgnoreCase))
-            .Where(i => i >= 0)
-            .DefaultIfEmpty(0)
-            .Min();
-
-        var start = Math.Max(0, index - radius);
-        var end = Math.Min(text.Length, index + radius);
-        var snippet = text[start..end];
-
-        if (start > 0)
-            snippet = "…" + snippet;
-
-        if (end < text.Length)
-            snippet += "…";
-
-        return snippet;
-    }
 }

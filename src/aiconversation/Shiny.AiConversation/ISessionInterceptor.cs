@@ -24,6 +24,11 @@ public interface ISessionInterceptor
     /// Runs after each turn ends, whatever the outcome. Exceptions are logged, never surfaced.
     /// </summary>
     Task OnAfterTurn(TurnContext context, AiTurnResult result) => Task.CompletedTask;
+
+    /// <summary>
+    /// Runs after older messages were folded into a new rolling summary.
+    /// </summary>
+    Task OnCompacted(CompactionContext context) => Task.CompletedTask;
 }
 
 [Flags]
@@ -60,4 +65,19 @@ public sealed class TurnContext(IAiSession session, string turnId, AiInput input
 {
     public string TurnId => turnId;
     public AiInput Input => input;
+}
+
+public sealed class CompactionContext(IAiSession session, AiMessageDocument? summary, bool wasHardTrim)
+{
+    public IAiSession Session => session;
+
+    /// <summary>
+    /// The new <see cref="MessageRole.Summary"/> message; null after a hard trim.
+    /// </summary>
+    public AiMessageDocument? Summary => summary;
+
+    /// <summary>
+    /// True when summarizing failed and the oldest messages were dropped without a new summary.
+    /// </summary>
+    public bool WasHardTrim => wasHardTrim;
 }

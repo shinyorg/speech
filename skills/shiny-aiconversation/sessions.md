@@ -5,6 +5,7 @@
 ```csharp
 public interface IAiSessionManager
 {
+    IAiMemoryService Memory { get; }                 // see memory.md
     Task<IAiSession> Start(AiSessionSettings? settings = null, CancellationToken ct = default);
     Task<IAiSession?> Get(string sessionId, CancellationToken ct = default);
     Task<IAiSession?> GetLatest(CancellationToken ct = default);          // most recently active
@@ -39,6 +40,7 @@ public interface IAiSession : IAsyncDisposable
     IAsyncEnumerable<AiSessionEvent> GetEvents(CancellationToken ct = default);
     IAiTurn Send(AiInput input, CancellationToken ct = default);
     Task<MessagePage> GetMessages(long? beforeSequence, int count, CancellationToken ct = default);
+    Task Compact(CancellationToken ct = default);     // see compaction.md
     Task SetTitle(string title, CancellationToken ct = default);
     Task UpdateSettings(Func<AiSessionSettings, AiSessionSettings> update, CancellationToken ct = default);
 }
@@ -120,6 +122,8 @@ falls hopelessly behind is ended with an exception rather than stalling the sess
 | `UsageChanged(Usage, Context)` | After each turn |
 | `ContextPressureChanged(Context)` | `Normal` / `Warning` / `Critical` level changed |
 | `TitleChanged(Title)` | `SetTitle` |
+| `ContextCompacted(Summary, CompactedCount, WasHardTrim)` | Compaction finished (see `compaction.md`) |
+| `MemoryChanged(Document, Change)` / `MemoryPressureChanged(...)` | Assistant memory writes / scope full (see `memory.md`) |
 | `SessionError(Error)` | Turn failure or interceptor error |
 
 Consume from one background loop and marshal to the UI thread; render bubbles from

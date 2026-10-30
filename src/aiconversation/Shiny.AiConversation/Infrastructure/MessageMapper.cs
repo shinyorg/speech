@@ -13,7 +13,7 @@ static class MessageMapper
     public const string SummaryPrefix = "Summary of the earlier conversation:";
 
     /// <summary>
-    /// Stored history to prompt messages. Skips compacted, failed and still-streaming messages, sends
+    /// Stored history to prompt messages. Skips compacted, failed, still-streaming and summary messages, sends
     /// interrupted replies as what was actually heard, and drops tool calls whose result never arrived
     /// (providers reject an unanswered tool call).
     /// </summary>
@@ -49,8 +49,8 @@ static class MessageMapper
                     break;
 
                 case MessageRole.Summary:
-                    if (!String.IsNullOrWhiteSpace(msg.Text))
-                        result.Add(new ChatMessage(ChatRole.System, $"{SummaryPrefix}\n{msg.Text}"));
+                    // the current summary goes at the top of the prompt from the session header; summary
+                    // messages are history markers for the UI
                     break;
 
                 case MessageRole.Assistant:

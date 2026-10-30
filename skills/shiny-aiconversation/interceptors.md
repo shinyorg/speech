@@ -10,6 +10,7 @@ public interface ISessionInterceptor
     Task OnSessionLoaded(SessionLoadedContext context) => Task.CompletedTask;        // Start AND every Get
     Task OnBeforeTurn(TurnContext context) => Task.CompletedTask;                    // this turn only
     Task OnAfterTurn(TurnContext context, AiTurnResult result) => Task.CompletedTask; // any outcome
+    Task OnCompacted(CompactionContext context) => Task.CompletedTask;               // new rolling summary (Summary null after a hard trim)
 }
 ```
 

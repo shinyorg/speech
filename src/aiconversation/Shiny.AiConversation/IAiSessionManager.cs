@@ -8,6 +8,11 @@ namespace Shiny.AiConversation;
 public interface IAiSessionManager
 {
     /// <summary>
+    /// The assistant's memory documents, for showing, editing and deleting what it remembers.
+    /// </summary>
+    IAiMemoryService Memory { get; }
+
+    /// <summary>
     /// Persists a new session and returns an instance of it.
     /// </summary>
     Task<IAiSession> Start(AiSessionSettings? settings = null, CancellationToken ct = default);
@@ -28,7 +33,7 @@ public interface IAiSessionManager
     Task<IReadOnlyList<AiSessionDocument>> Query(SessionQuery query, CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes a session and all of its messages.
+    /// Deletes a session, all of its messages and its session-scoped memory.
     /// </summary>
     Task Delete(string sessionId, CancellationToken ct = default);
 }
