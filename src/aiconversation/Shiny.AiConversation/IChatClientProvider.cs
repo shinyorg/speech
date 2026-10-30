@@ -3,9 +3,13 @@ using Microsoft.Extensions.AI;
 namespace Shiny.AiConversation;
 
 /// <summary>
-/// Provides an <see cref="IChatClient"/> instance for the AI service.
+/// Provides an <see cref="IChatClient"/> instance for AI sessions.
 /// Implementations handle authentication, token management, and client construction.
 /// </summary>
+/// <remarks>
+/// The session runs the tool loop itself. A client without function invocation is wrapped with
+/// <c>UseFunctionInvocation()</c> automatically; a client that already has it is used as-is.
+/// </remarks>
 public interface IChatClientProvider
 {
     /// <summary>
@@ -16,11 +20,13 @@ public interface IChatClientProvider
     Task<IChatClient> GetChatClient(CancellationToken cancelToken = default);
 
     /// <summary>
-    /// How this provider's endpoint can be asked for a structured <see cref="AiTurn"/>. Defaults to
-    /// <see cref="AiStructuredOutputMode.JsonSchema"/> - override it when the endpoint or model rejects
-    /// schema-constrained responses. The conversation service falls back to plain text whenever a
-    /// structured reply fails to parse, regardless of the mode, so a wrong guess here degrades rather
-    /// than breaks.
+    /// The model's context window in tokens, used when <see cref="AiSessionSettings.ContextWindow"/> is not set.
+    /// Null means unknown: sessions then report raw token counts but no context pressure.
     /// </summary>
-    AiStructuredOutputMode StructuredOutputMode => AiStructuredOutputMode.JsonSchema;
+    int? ContextWindow => null;
+
+    /// <summary>
+    /// True when the endpoint accepts images inside tool results (used by the camera tool).
+    /// </summary>
+    bool SupportsImagesInToolResults => false;
 }

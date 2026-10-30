@@ -4,7 +4,7 @@ This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
 - **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and concurrent stream playback (`IAudioPlayer` / `IAudioPlayback`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), and echo-cancelled **full-duplex voice** for calls (`IAudioDuplex`), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
-- **Shiny.AiConversation** — A centralized AI service that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService`. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
+- **Shiny.AiConversation** — Session-based AI conversations over Microsoft.Extensions.AI: streamed replies, typed questions, persisted and resumable sessions, and token/context tracking, with the voice loop (wake word, speech-to-text, text-to-speech) layered on top. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
 
@@ -23,11 +23,11 @@ the AI conversation loop running in the browser. Source: [`samples/BlazorSample`
 | **Shiny.Speech.ElevenLabs** | ElevenLabs provider (STT + TTS) | net10.0 |
 | **Shiny.Speech.Typecast** | Typecast provider (TTS only, via the `typecast-csharp` SDK) | net10.0 |
 | **Shiny.Speech.Linux.Whisper** | On-device, offline STT for Linux (incl. Raspberry Pi) running Whisper locally through whisper.cpp — no cloud account, no network | net10.0 |
-| **Shiny.AiConversation** | Central `IAiConversationService` orchestrating chat + the full voice loop | net10.0 (+ MAUI platforms) |
-| **Shiny.AiConversation.Maui** | `AiChatView` — a .NET MAUI chat control (built on Shiny.Maui.Controls `ChatView`) already wired to `IAiConversationService`, including message-store history | net10.0 (MAUI) |
+| **Shiny.AiConversation** | `IAiSessionManager` / `IAiSession`: persisted, streaming AI sessions with typed questions and context tracking (no audio dependency) | net10.0 |
+| **Shiny.AiConversation.Maui** | `AiChatView` — a .NET MAUI chat control (built on Shiny.Maui.Controls `ChatView`). *Being rebuilt on v3 sessions* | net10.0 (MAUI) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
-| **Shiny.AiConversation.MessageStores.SqliteDocDb** | SQLite/DocumentDb-backed `IMessageStore` for persistent chat history | net10.0 |
+| **Shiny.AiConversation.MessageStores.SqliteDocDb** | SQLite/DocumentDb-backed chat history. *Being replaced by a v3 `IAiSessionStore`* | net10.0 |
 
 ## Getting Started
 
@@ -941,47 +941,41 @@ permission and would surface in the store listing of an app that only uses text-
 
 # Shiny.AiConversation
 
-A centralized AI service library for .NET MAUI apps that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService` interface. It builds directly on Shiny.Speech for the voice loop.
+Session-based AI conversations for .NET apps on top of [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai/):
+streamed replies, typed questions, persisted and resumable sessions, and token/context tracking.
 
 [![NuGet](https://img.shields.io/nuget/v/Shiny.AiConversation.svg)](https://www.nuget.org/packages/Shiny.AiConversation/)
 
 > The package-level readme lives at [`src/aiconversation/readme.md`](src/aiconversation/readme.md).
 
+> **v3 is a rewrite in progress.** The core text-session API below is done. The voice loop (wake word,
+> text-to-speech, interruption, acknowledgements), the MAUI chat adapter and the SQLite session store are
+> being rebuilt on top of sessions and are not in this version yet. The core package no longer depends on
+> Shiny.Speech or Shiny.Audio.
+
 ## Features
 
-- **Chat Integration** — Send text or voice messages to any AI backend via [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai/)
-- **Wake Word Detection** — Hands-free activation with continuous keyword listening
-- **Speech-to-Text / Text-to-Speech** — Full voice loop powered by Shiny.Speech (above)
-- **Acknowledgement Modes** — None, AudioBlip (sound effects), LessWordy (concise TTS), or Full (complete TTS)
-- **Context Providers** — Pluggable `IContextProvider` visitor pattern for populating an `AiContext` per request (system prompts, AI tools, quiet words, speech options)
-- **Persistent Chat History** — Pluggable `IMessageStore` for storing and querying past conversations
-- **AI History Lookup Tool** — Automatically available when an `IMessageStore` is registered, lets the AI search past conversations on its own
-- **Voice Selection Tools** — Optional `AddVoiceSelectionTools()` lets the AI list voices, play samples, and switch its own TTS voice mid-conversation
-- **State Management** — Observable `AiState` (Idle / Listening / Thinking / Responding) with events
-- **Sound Effects** — Configurable sound stream factories for each state transition
-- **Structured Turns** — The AI answers with a typed `AiTurn` (`Reply` + `Questions`), so "I need something back from you" is a real signal rather than a guess at the wording. Falls back to plain text automatically on any provider or model that can't produce it
-- **Conversation Continuation** — When a turn carries questions the microphone stays open for the answer, with a `FollowUpTimeout` that hands control back to the wake word if nobody replies
-- **Multiple Choice** — Questions can carry a fixed set of `AiChoice` answers, rendered as tappable buttons by `AiChatView`
-- **Voice Interruption** — Configurable quiet words (e.g., "stop", "cancel") via `AiContext.QuietWords` immediately silence TTS and break the loop; any other speech during TTS interrupts and continues with the new utterance
+- **Sessions** — `IAiSessionManager` starts, resumes (`Get` / `GetLatest`), queries and deletes sessions. Sessions never end; they're persisted and can be picked up again at any time
+- **Streaming turns** — `session.Send(...)` returns an `IAiTurn` whose events stream text as it arrives; a new `Send` supersedes the active turn
+- **Typed questions** — the model calls the built-in `ask_user` tool when it needs an answer; the session moves to `AwaitingUser` with `PendingQuestions` (optionally with multiple-choice `AiChoice`s). A reply that ends in `?` still keeps the conversation open
+- **Interruption** — `turn.Interrupt(spokenText)` records what the user actually heard, and the model is told the reply was cut off
+- **Usage & context** — cumulative `SessionUsage` for billing and a `ContextSnapshot` for how full the context window is, with `Normal` / `Warning` / `Critical` pressure for the UI to act on
+- **Interceptors** — `ISessionInterceptor` adds tools and system prompts per session (`OnSessionLoaded`) or per turn (`OnBeforeTurn`), optionally by `Profile`
+- **Honest persistence** — the user message is stored before the model is called and the reply is stored as streaming then finalized, so failures and crashes leave an accurate record. Tool calls are persisted too
+- **One event stream** — `session.GetEvents()` is an `IAsyncEnumerable` that starts with a `Snapshot`, so a UI binds to one ordered stream
 
 ## Quick Start
 
 ```csharp
-using Shiny.AiConversation;
-
-var builder = MauiApp.CreateBuilder();
-builder.UseMauiApp<App>();
-
 // Register an IChatClient in DI (from any Microsoft.Extensions.AI-compatible provider)
 builder.Services.AddChatClient(new OpenAIClient("your-api-key").GetChatClient("gpt-4o").AsIChatClient());
 
 builder.Services.AddShinyAiConversation(opts =>
 {
-    // Optional — enable persistent history (ChatLookupAITool is added automatically)
-    opts.SetMessageStore<MyMessageStore>();
+    opts.AddInterceptor<MyInterceptor>();                       // optional: tools + prompts
+    opts.AddTool(AIFunctionFactory.Create(GetWeather), AiToolFlags.None);
+    // opts.SetSessionStore<MyStore>();                         // default: in-memory
 });
-
-return builder.Build();
 ```
 
 ### Chat client providers
@@ -995,209 +989,74 @@ opts.AddGithubCopilotChatClient();
 ```
 
 For other backends, implement `IChatClientProvider` and register with `opts.SetChatClientProvider<MyProvider>()`.
+Set `ContextWindow` on the provider (or `AiSessionSettings.ContextWindow`) to get context pressure.
 
-### Use the service
+### Talk to the AI
 
 ```csharp
-public class ChatViewModel(IAiConversationService aiService)
+public class ChatViewModel(IAiSessionManager sessions)
 {
-    public Task SendMessage(string text) => aiService.TalkTo(text, CancellationToken.None);
+    IAiSession? session;
 
-    public async Task UseMicrophone()
+    public async Task Send(string text)
     {
-        if (await aiService.RequestAccess() == AccessState.Available)
-            await aiService.ListenAndTalk(CancellationToken.None);
+        this.session ??= await sessions.GetLatest() ?? await sessions.Start();
+
+        var turn = this.session.Send(AiInput.Text(text));
+        await foreach (var e in turn.Events)
+        {
+            if (e is TextDelta delta)
+                AppendToBubble(delta.Text);
+        }
+
+        var result = await turn.Completion;   // never throws; check result.Outcome
+        if (result.Outcome == AiTurnOutcome.AwaitingUser)
+            ShowChoices(this.session.PendingQuestions);
     }
 
-    public Task StartWakeWord() => aiService.StartWakeWord("Hey Assistant");
+    // a tapped choice goes back as a normal message
+    public void Answer(AiQuestion question, AiChoice choice)
+        => this.session!.Send(AiInput.Answer(question, choice.Id));
 }
 ```
 
-## MAUI Chat UI (`Shiny.AiConversation.Maui`)
-
-`AiChatView` is a drop-in chat screen for the conversation service. It derives from the
-[Shiny.Maui.Controls](https://shinylib.net/client/controls/) `ChatView`, so every style, template and
-behavior property of the base control still applies — but the provider, session, history paging and
-live AI events are already wired up. There is nothing to bind.
-
-```bash
-dotnet add package Shiny.AiConversation.Maui
-```
-
-```xml
-<ContentPage xmlns:ai="http://shiny.net/maui/aiconversation">
-    <ai:AiChatView BotName="Aura"
-                   BotAvatar="bot.png"
-                   GreetingMessage="Hi! What can I help you with?"
-                   ShowMicrophoneAction="True"
-                   ShowTokenUsage="True"
-
-                   MyBubbleColor="{StaticResource Primary}"
-                   MyTextColor="White"
-                   OtherBubbleColor="#F0EEFF"
-                   BubbleCornerRadius="16"
-                   PlaceholderText="Ask me something..." />
-</ContentPage>
-```
-
-What it wires for you:
-
-- **Sending** — typed messages go to `IAiConversationService.TalkTo`; replies arrive on `AiResponded` and render as bubbles
-- **Voice** — utterances heard by speech-to-text (wake word *or* push-to-talk) render as user bubbles via `SpeechOccurred`; `ShowMicrophoneAction` adds an input-bar action that calls `ListenAndTalk`
-- **History** — the chat is backfilled from the registered `IMessageStore` and pages further back on scroll-to-top. No message store registered? The chat simply starts empty and stays live-only
-- **Typing indicator** — driven by `AiState` (`Thinking` / `Responding`), with a heartbeat so long turns keep the bubble alive
-- **Errors** — failures from `TalkTo` and the service's `ErrorOccurred` event render as AI bubbles (`Identifier = "error"`)
-- **Choice buttons** — turns carrying `AiChoice` options render as tappable chips under the bubble; the tapped label is sent as the user's answer. Multi-select questions collect picks and commit with a send chip. Setting your own `MessageTemplate` / `MessageTemplateSelector` takes precedence — read the choices off `ChatMessage.Metadata` with `AiChoiceTemplateSelector.ReadQuestions`
-
-### AiChatView properties
-
-| Property | Default | Description |
-|----------|---------|-------------|
-| `AiService` | resolved from DI | The `IAiConversationService` to drive. Leave unset to resolve from the app's service provider |
-| `BotName` | `Assistant` | Display name of the AI (also the chat session name) |
-| `BotAvatar` | `null` | `ImageSource` for the AI |
-| `BotBubbleColor` | `null` | Per-user bubble color for the AI; falls back to `OtherBubbleColor` |
-| `UserName` / `UserAvatar` / `UserBubbleColor` | `Me` / `null` / `null` | The device user's identity; bubble color falls back to `MyBubbleColor` |
-| `LoadHistory` | `true` | Backfill + page history from the message store |
-| `GreetingMessage` | `null` | AI message shown when there's no history |
-| `ShowTokenUsage` | `false` | Appends a token usage footer to AI messages when the provider reports usage |
-| `ShowMicrophoneAction` | `false` | Adds a push-to-talk action to the input bar (invoke again to cancel) |
-| `MicrophoneActionText` | `🎤 Voice Input` | Label of that action |
-| `ShowChoiceButtons` | `true` | Renders a button per `AiChoice` under AI bubbles that ask a multiple-choice question; tapping one sends its label as the answer |
-| `ChoiceSendText` | `Send` | Label of the commit button shown for questions that allow more than one choice |
-| `Refresh()` | — | Method — reloads the conversation (use after `ClearChatHistory`) |
-
-Everything else — `MyBubbleColor`, `OtherTextColor`, `ChatBackgroundColor`, `BubbleFontSize`,
-`BubbleFontFamily`, `BubbleCornerRadius`, `TimestampFontSize`, `PlaceholderText`, `SendButtonText`,
-`SendButton*`/`InputBar*` colors, `IsInputBarVisible`, `ShowTypingIndicator`, `MessageTemplate`,
-`MessageTemplateSelector`, `InputActions`, `CustomBubbleActions`, `PageSize`, `UseFeedback`,
-`AdjustForKeyboard` — is inherited from `ChatView` and documented with it.
-
-> Hosting the chat inside a `FloatingPanel`? Set `AdjustForKeyboard="False"`, same as the base control.
-
-To drive a plain `ChatView` yourself instead, register the provider and bind it:
+A UI that wants everything (both sides of the conversation, state, usage, errors) subscribes once:
 
 ```csharp
-builder.Services.AddShinyAiConversation(opts =>
+await foreach (var e in session.GetEvents(ct))   // first item is always a Snapshot
 {
-    opts.AddGithubCopilotChatClient();
-    opts.AddChatSessionProvider(cfg => cfg.BotName = "Aura"); // registers IChatSessionProvider
-});
-```
-
-## Structured turns, questions & choices
-
-`IChatClient` has no way to say "that was a question, keep listening" — `ChatFinishReason` is only
-`Stop` / `Length` / `ToolCalls` / `ContentFilter`. So the service asks the model for a structured turn
-instead and reads the signal off the shape:
-
-```csharp
-public record AiTurn(string Reply, AiQuestion[]? Questions);
-public record AiQuestion(string Id, string Text, AiChoice[]? Choices, bool AllowMultiple);
-public record AiChoice(string Id, string Label);
-```
-
-**`Reply` is what the user sees and hears. `Questions` drives the interface.** The model still phrases
-the question naturally inside `Reply` — nothing reads the structured question text aloud.
-
-```csharp
-aiService.AiResponded += response =>
-{
-    var text = response.Text;                 // the parsed reply, never the raw JSON
-    if (response.ExpectsResponse)             // typed - no punctuation sniffing
+    switch (e)
     {
-        foreach (var q in response.Questions)
-            Console.WriteLine($"{q.Text}: {String.Join(", ", q.Choices?.Select(c => c.Label) ?? [])}");
+        case MessageAdded m: ...; break;
+        case TurnEventOccurred { Event: TextDelta d }: ...; break;
+        case StateChanged s: ...; break;
+        case ContextPressureChanged p: ...; break;  // e.g. "this conversation is getting long"
     }
-};
+}
 ```
-
-`IAiConversationService.PendingQuestions` holds the current queue. **Each turn replaces it** — the model
-is the source of truth for what it still needs, so anything it stops asking about is treated as answered.
-An answer is sent back as plain text and resolved by the model in context; nothing is matched locally.
-
-### Provider support
-
-Endpoints differ in what they'll accept, so `IChatClientProvider.StructuredOutputMode` declares the best
-mode for each one:
-
-| Mode | Request | Use for |
-|------|---------|---------|
-| `JsonSchema` *(default)* | Native schema-constrained response | OpenAI and compatible endpoints |
-| `Json` | JSON response format + shape in the prompt | GitHub Copilot and models without schema support |
-| `Prompt` | Shape in the prompt only, no format constraint | Endpoints that reject both of the above |
-| `None` | Plain text | Opting out — falls back to the wording heuristic |
-
-Parsing is forgiving (markdown fences and surrounding prose are tolerated), and **any failure degrades
-to plain text** rather than erroring: `AiResponse.Turn` is null, `AiResponse.Text` is the raw reply, and
-`ExpectsResponse` falls back to checking whether the reply ends in a question. Override the provider's
-choice with `IAiConversationService.StructuredOutputMode`, or opt out entirely with `None`.
-
-### The follow-up window
-
-When a turn carries questions the microphone stays open for the answer without needing the wake word
-again. `FollowUpTimeout` (default 20 seconds, null to wait indefinitely) bounds that: if nobody answers,
-the queue is cleared and the conversation goes back to requiring the wake word — otherwise an abandoned
-question leaves the mic hot and the next unrelated thing said in the room becomes the answer.
-
-When the reply is being spoken aloud (`Acknowledgement` above `AudioBlip`) the model is instructed to ask
-**at most one question per turn**; in text mode it may ask several. Three questions in one breath works
-as chips and is unusable as audio.
 
 ## API Overview
 
-### IAiConversationService
-
-| Member | Description |
-|--------|-------------|
-| `RequestAccess()` | Check speech-to-text access — returns `Available` or `Restricted` |
-| `TalkTo(string, CancellationToken)` | Send a text message to the AI |
-| `ListenAndTalk(CancellationToken)` | Capture speech via microphone and send to AI |
-| `StartWakeWord(string)` / `StopWakeWord()` | Begin / stop continuous wake word detection |
-| `GetChatHistory(...)` / `ClearChatHistory(...)` | Query / clear persisted chat history |
-| `ClearCurrentChat()` | Clear in-memory session messages (also clears `PendingQuestions`) |
-| `Status` | Current `AiState` (Idle / Listening / Thinking / Responding) |
-| `Acknowledgement` | Get/set the response delivery mode |
-| `PendingQuestions` | The questions the AI is waiting on, from the most recent turn (replaced each turn) |
-| `FollowUpTimeout` | How long to keep listening for an answer before returning to the wake word (default 20s, null waits forever) |
-| `StructuredOutputMode` | Overrides the provider's `AiStructuredOutputMode`; null uses the provider's own |
-| `StatusChanged` / `AiResponded` | Events for state changes and completed responses |
-
-### Acknowledgement Modes
-
-| Mode | Behavior |
-|------|----------|
-| `None` | No audio feedback or text-to-speech |
-| `AudioBlip` | Short sound effects at state transitions |
-| `LessWordy` | Text-to-speech with a "be concise" system prompt |
-| `Full` | Text-to-speech with full unmodified responses |
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│              IAiConversationService              │
-│   (orchestrates chat, speech, sounds, history)   │
-├──────────────┬──────────────┬────────────────────┤
-│ IChatClientProvider │ IMessageStore │ ChatLookupAITool │
-│ (default: DI)       │ (persistence) │ (optional AITool)│
-│        IChatClient  │  ISpeechToText / ITextToSpeech   │
-│        (M.E.AI)     │  (Shiny.Speech) · IAudioPlayer   │
-│                     │  (Shiny.Audio)                   │
-└─────────────────────────────────────────────────┘
-```
+| Type | Description |
+|------|-------------|
+| `IAiSessionManager` | `Start(settings)`, `Get(id)`, `GetLatest()`, `Query(query)`, `Delete(id)`. Stateless: every load returns a new instance that the caller disposes |
+| `IAiSession` | `Send(input)`, `GetEvents()`, `GetMessages(beforeSequence, count)`, `SetTitle`, `UpdateSettings`; `State`, `PendingQuestions`, `Usage`, `Context`, `ActiveTurn` |
+| `IAiTurn` | `Events` (replayable), `Completion` (`AiTurnResult` with `Outcome`: Completed / AwaitingUser / Interrupted / Superseded / Failed), `Interrupt(spokenText)` |
+| `AiInput` | `Text(...)`, `Voice(...)` (asks for spoken-style replies and at most one question), `Answer(question, choiceIds)` |
+| `AiSessionSettings` | Persisted per session: `Profile`, `ContextWindow`, warning/critical thresholds, `Tags`, `Metadata`, `ExcludeFromSearch` |
+| `ISessionInterceptor` | `OnSessionLoaded` (runs on Start **and** every Get), `OnBeforeTurn`, `OnAfterTurn` |
+| `IAiSessionStore` | Session headers + append-only messages. `InMemoryAiSessionStore` is the default; serialize with `AiConversationJsonContext` |
+| `IChatClientProvider` | Supplies the `IChatClient`; optional `ContextWindow`. The session adds function invocation itself when the client lacks it |
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | `IChatClient` abstraction |
-| Shiny.Speech | Speech-to-text, text-to-speech, and audio playback (this repo) |
+| [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | `IChatClient` abstraction and the tool loop |
 
 ## Samples
 
-- [MAUI sample](samples/MauiSample) — chat, settings, wake word, and animated aura visualization
-- [Blazor sample](samples/BlazorSample) — the same features as Razor components (deployed to https://shinyorg.github.io/speech/)
+- [MAUI sample](samples/MauiSample) and [Blazor sample](samples/BlazorSample) — being moved to the v3 session API (they still target 2.x)
 
 ## License
 

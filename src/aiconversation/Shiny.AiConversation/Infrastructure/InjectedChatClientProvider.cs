@@ -10,7 +10,7 @@ public class InjectedChatClientProvider(IServiceProvider services) : IChatClient
         var chatClient = services.GetService<IChatClient>();
         if (chatClient == null)
             throw new InvalidOperationException($"You must have an IChatClient registered on your DI container OR you have to implement Shiny.AiConversation.IChatClientProvider");
-        
+
         return Task.FromResult(chatClient);
     }
 }

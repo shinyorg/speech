@@ -1,7 +1,22 @@
 # Shiny.AiConversation v3 — Contracts
 
-Companion to [aiconversation-sessions.md](aiconversation-sessions.md). Design sketch, not compiled.
+Companion to [aiconversation-sessions.md](aiconversation-sessions.md). Design sketch; Phase 1 parts are
+implemented in `src/aiconversation/Shiny.AiConversation` (the code wins where they differ).
 Items marked `// NEW` were added while consolidating (gaps the plan referenced but never defined).
+
+**Phase 1 implementation differences**
+- `AiInput.Answer(AiQuestion question, params string[] choiceIds)` takes the question (not its id) so the
+  answer text can be built from the choice labels.
+- `MessageSource.Model` added for assistant messages.
+- `TitleChanged` session event added (for `SetTitle`).
+- Turn/session event records are positional with `TurnId`/`SessionId` + `Timestamp` first; `TurnStarted` carries
+  the stored user message; `TurnInterrupted` and `TurnFailed` carry the `AiTurnResult`.
+- `IAiTurn.Events` ends normally after `TurnFailed` (it doesn't throw), and `Completion` never faults: the
+  error is on `AiTurnResult.Error`.
+- Registration is `AddShinyAiConversation(o => ...)` with `SetChatClientProvider`, `SetSessionStore`,
+  `AddInterceptor` and `AddTool(tool, flags, params profiles)`.
+- Not built yet (their phase): `Compact`, `IContextCompactor`, `ContextCompacted`, memory API/events,
+  attachments / `ImagePart` / `WithImage`.
 
 ## 1. Core — manager, session, turn
 
@@ -71,7 +86,7 @@ public record AiInput(IReadOnlyList<MessagePart> Parts, MessageSource Source)
 {
     public static AiInput Text(string text, MessageSource source = MessageSource.Typed);
     public static AiInput Voice(string text);
-    public static AiInput Answer(string questionId, params string[] choiceIds);
+    public static AiInput Answer(AiQuestion question, params string[] choiceIds);
     public AiInput WithImage(ReadOnlyMemory<byte> data, string mediaType);
 }
 

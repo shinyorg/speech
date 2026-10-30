@@ -8,78 +8,53 @@ using Shiny.AiConversation.Infrastructure;
 namespace Shiny;
 
 /// <summary>
-/// Configuration options for the Shiny AI service, used during registration
-/// to set up the chat client provider, message store, and optional AI tools.
+/// Configuration used during registration to set the chat client provider, session store, interceptors and tools.
 /// </summary>
 public class AiConversationOptions(IServiceCollection services)
 {
     public IServiceCollection Services => services;
-    
-    /// <summary>
-    /// Will call for Shiny Speech Service registration if true (default)
-    /// </summary>
-    public bool AutoAddSpeechServices { get; set; } = true;
+
 
     /// <summary>
-    /// Registers an <see cref="IContextProvider"/> implementation that populates the AI context with tools and system prompts.
+    /// Registers the <see cref="IChatClientProvider"/> used to obtain chat clients. Without one, an
+    /// <see cref="IChatClient"/> is resolved from DI.
     /// </summary>
-    /// <typeparam name="TContextProvider"></typeparam>
-    /// <returns></returns>
-    public AiConversationOptions AddContextProvider<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TContextProvider>()
-        where TContextProvider : class, IContextProvider
+    public AiConversationOptions SetChatClientProvider<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProvider>()
+        where TProvider : class, IChatClientProvider
     {
-        services.AddSingleton<IContextProvider, TContextProvider>();
-        return this;
-    }
-    
-    
-    /// <summary>
-    /// Registers the <see cref="IChatClientProvider"/> implementation used to obtain chat clients.
-    /// </summary>
-    /// <typeparam name="TTokenProvider">The concrete provider type.</typeparam>
-    /// <returns>This options instance for chaining.</returns>
-    public AiConversationOptions SetChatClientProvider<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TTokenProvider>()
-        where TTokenProvider : class, IChatClientProvider
-    {
-        services.TryAddSingleton<IChatClientProvider, TTokenProvider>();
+        services.TryAddSingleton<IChatClientProvider, TProvider>();
         return this;
     }
 
-    /// <summary>
-    /// Registers an <see cref="IMessageStore"/> implementation for persisting chat history.
-    /// Optionally registers a <see cref="ChatLookupAITool"/> that allows the AI to search past conversations.
-    /// </summary>
-    /// <typeparam name="TMessageStore">The concrete message store type.</typeparam>
-    /// <returns>This options instance for chaining.</returns>
-    public AiConversationOptions SetMessageStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TMessageStore>()
-        where TMessageStore : class, IMessageStore
-    {
-        services.AddSingleton<IMessageStore, TMessageStore>();
-        return this;
-    }
-    
 
     /// <summary>
-    ///
+    /// Registers the <see cref="IAiSessionStore"/>. Defaults to <see cref="InMemoryAiSessionStore"/>.
     /// </summary>
-    /// <typeparam name="TSoundProvider"></typeparam>
-    /// <returns></returns>
-    public AiConversationOptions SetSoundProvider<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSoundProvider>()
-        where TSoundProvider : class, ISoundProvider
+    public AiConversationOptions SetSessionStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TStore>()
+        where TStore : class, IAiSessionStore
     {
-        services.AddSingleton<ISoundProvider, DefaultSoundPlayer>();
+        services.TryAddSingleton<IAiSessionStore, TStore>();
         return this;
     }
 
+
     /// <summary>
-    /// Registers optional AI tools that allow the AI to list available voices, play voice samples,
-    /// and change its own text-to-speech voice during a conversation.
-    /// Requires speech services (AutoAddSpeechServices must be true, or ITextToSpeechService registered separately).
+    /// Registers an <see cref="ISessionInterceptor"/> that adds tools and prompts to sessions and reacts to turns.
     /// </summary>
-    /// <returns>This options instance for chaining.</returns>
-    public AiConversationOptions AddVoiceSelectionTools()
+    public AiConversationOptions AddInterceptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TInterceptor>()
+        where TInterceptor : class, ISessionInterceptor
     {
-        services.AddSingleton<IContextProvider, VoiceSelectionContextProvider>();
+        services.AddSingleton<ISessionInterceptor, TInterceptor>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Adds a tool to every session, or only to sessions with one of <paramref name="profiles"/>.
+    /// </summary>
+    public AiConversationOptions AddTool(AITool tool, AiToolFlags flags = AiToolFlags.None, params string[] profiles)
+    {
+        services.AddSingleton(new AiToolRegistration(tool, flags, profiles));
         return this;
     }
 }

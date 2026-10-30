@@ -1,6 +1,6 @@
 # Shiny.AiConversation v3 — Session-Based Rewrite
 
-Status: **Draft / planning** · Branch: `v3` · Started: 2026-10-21
+Status: **Phase 1 done (2026-10-29)** · Branch: `v3` · Started: 2026-10-21
 
 All contracts consolidated in [aiconversation-contracts.md](aiconversation-contracts.md); it is the source of truth when the two differ.
 
@@ -135,8 +135,8 @@ Drop `AiStructuredOutputMode`, `AiTurnSerializer`, the schema prompt and the 4-m
 Why this matters: streaming works, every provider supports tool calls, and history stays plain text plus
 a tool call, with no JSON in the transcript.
 
-**Open:** confirm that `Terminate` behaves correctly with `GetStreamingResponseAsync` in the MEAI version
-we pin (spike in Phase 1).
+**Confirmed (Phase 1 spike, MEAI 10.7.0):** `Terminate` ends the streaming tool loop after the `ask_user`
+round trip; no second model request is made. Pinned by `MeaiBehaviourTests`.
 
 ---
 
@@ -220,10 +220,11 @@ How `CurrentTokens` is measured:
 
 1. **Measured:** `InputTokens + OutputTokens` of the **last single model request** in the turn. That's
    the true size of what the provider saw, plus the reply that will be in the next prompt.
-2. **Gotcha:** `FunctionInvokingChatClient` sums usage across the tool loop, so the turn's aggregated
-   `ChatResponse.Usage` overstates context size. Capture per-request usage with a small
-   `UsageCapturingChatClient` placed **inside** (below) the function-invocation client, and use its
-   last value.
+2. **Gotcha:** the turn's aggregated `ChatResponse.Usage` (and `ToChatResponse()`) sums usage across the
+   tool loop, so it overstates context size. **Spike result:** while *streaming*, `FunctionInvokingChatClient`
+   passes each request's `UsageContent` through unaggregated, so the turn reads per-request usage straight
+   from the stream and uses the last one. No `UsageCapturingChatClient` is needed, and providers can keep
+   their own `UseFunctionInvocation()` (the session adds it only when the client lacks it).
 3. **Estimated:** when the provider reports no usage, estimate (chars / 4, plus fixed overhead per message
    and per tool definition) and set `IsEstimate = true`. A resumed session gets an estimate until its
    first real request.
@@ -517,7 +518,7 @@ C# `event`s on the new public API.
 - **Turn events** (`IAiTurn.Events`): single-consumer, cold-ish stream for that turn. It completes with
   `TurnCompleted` / `TurnInterrupted`, or completes with an exception on `TurnFailed`. A second
   enumeration replays the turn's buffered events from the start (the turn buffers its own events; turns
-  are short).
+  are short). *(Implemented: the stream ends normally after `TurnFailed`, and the error is on the result.)*
 - **Session and voice events** (`IAiSession.GetEvents(ct)`, `IVoiceConversation.GetEvents(ct)`):
   **hot broadcast.** Each call registers a subscriber backed by its own `Channel<T>`. The UI, the voice
   driver and app code can all listen at once without interfering with each other.
@@ -774,22 +775,35 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
 
 ## 8. Phases
 
-### Phase 1 — Core text sessions
-- [ ] Spike: streaming + terminating tool (`ask_user`) with the pinned MEAI version; confirm usage reporting per request in streaming.
-- [ ] Core types: options, inputs, events, documents, `MessagePart`, JSON source-gen context.
-- [ ] `BroadcastChannel<T>` (hot `IAsyncEnumerable` fan-out, snapshot-first, coalescable vs lifecycle backpressure) + tests.
-- [ ] `MessageMapper` (MEAI ↔ stored) + round-trip tests.
-- [ ] `AiSession` / `AiTurn`: streaming, single active turn, cancel-and-replace, interrupt recording.
-- [ ] `UsageCapturingChatClient` + `SessionUsage` / `ContextSnapshot` + estimator + `Pressure` levels and `ContextPressureChanged`.
-- [ ] Stateless `AiSessionManager` (no caching), `Get` rehydration, `AiSessionSettings` vs runtime split.
-- [ ] `IAiSessionStore` + `InMemoryAiSessionStore`; write-early semantics; store-allocated `Sequence`; header `Version` check.
-- [ ] Lazy recovery (`RunId`); two-instance tests (reload on version change, conflict on concurrent turns).
-- [ ] Interceptors; port `IContextProvider` users.
-- [ ] `ask_user` + `AwaitingUser` + `?` fallback.
-- [ ] Unit tests for L6, L8, L9, L12, P3–P6.
+### Phase 1 — Core text sessions (done 2026-10-29)
+- [x] Spike: streaming + terminating tool (`ask_user`) with the pinned MEAI version; confirm usage reporting per request in streaming. (Both confirmed; see §3, §4.3.)
+- [x] Core types: options, inputs, events, documents, `MessagePart`, JSON source-gen context.
+- [x] `BroadcastChannel<T>` (hot `IAsyncEnumerable` fan-out, snapshot-first, coalescable vs lifecycle backpressure) + tests.
+- [x] `MessageMapper` (MEAI ↔ stored) + round-trip tests.
+- [x] `AiSession` / `AiTurn`: streaming, single active turn, cancel-and-replace, interrupt recording.
+- [x] ~~`UsageCapturingChatClient`~~ per-request usage read from the stream (spike) + `SessionUsage` / `ContextSnapshot` + estimator + `Pressure` levels and `ContextPressureChanged`.
+- [x] Stateless `AiSessionManager` (no caching), `Get` rehydration, `AiSessionSettings` vs runtime split.
+- [x] `IAiSessionStore` + `InMemoryAiSessionStore`; write-early semantics; store-allocated `Sequence`; header `Version` check.
+- [x] Lazy recovery (`RunId`); two-instance tests (reload on version change, conflict on concurrent turns).
+- [x] Interceptors; port `IContextProvider` users. (`DefaultSessionInterceptor` = time prompt + registered tools. Voice selection moves to Phase 3, chat lookup to Phase 2 search.)
+- [x] `ask_user` + `AwaitingUser` + `?` fallback.
+- [x] Unit tests for L6, L8, L9, L12, P3–P6. (46 tests in `Shiny.AiConversation.Tests`.)
+
+**Phase 1 notes**
+- v2 core types are deleted (D2). `Shiny.AiConversation.Maui` and `Shiny.AiConversation.MessageStores.SqliteDocDb`
+  are out of `Build.slnf` until Phase 4 / Phase 2 rebuild them; the samples still target the v2 API (Phase 4).
+  The Blazor sample deploy workflow triggers on `src/aiconversation/**` for `v*` branches and will fail until then.
+- Core no longer references Shiny.Speech / Shiny.Audio. The v2 sound effects (`Resources/*.wav`) were deleted
+  with it; restore them into the Voice package in Phase 3 from git (`git show ac44360:src/aiconversation/Shiny.AiConversation/Resources/ok.wav`, etc.).
+- Deferred from the contracts to the phase that builds them: `IAiSession.Compact`, `IContextCompactor`,
+  `ContextCompacted` (Phase 2); `IAiSessionManager.Memory`, memory events (Phase 2); `ImagePart`,
+  `AttachmentRef`, `IAiAttachmentStore`, `AiInput.WithImage` (Phase 4 camera).
+- `Audience` on `MessagePart` and the `Silent` tool flag landed in Phase 1 (they were listed in Phase 2).
+- Differences from the contracts are listed at the top of [aiconversation-contracts.md](aiconversation-contracts.md).
 
 ### Phase 2 — Persistence & context management
 - [ ] `DocumentDbAiSessionStore` (SqliteDocDb): two document types, indexes on `SessionId`+`Sequence`, `LastActivity`.
+- [ ] Rename the store package to `Shiny.AiConversation.Stores.SqliteDocDb` (D2a) and put it back in `Build.slnf`.
 - [ ] Rolling compaction (`IContextCompactor`, LLM summary, post-turn background run, hard-trim + message-cap fallbacks).
 - [ ] Title interceptor, long-term memory interceptor.
 - [ ] `search_conversations` / `read_conversation` (§5.7); spike FTS5 in Shiny.DocumentDb; `ExcludeFromSearch`.
@@ -797,7 +811,7 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
       pre-compaction flush, `IAiMemoryService` for apps, `MemoryChanged` / `MemoryPressureChanged` events.
 - [ ] `Audience` on `MessagePart`; `Silent` tool flag.
 - [ ] Spike: Shiny.DocumentDb conditional update / transaction for `Version` + `Sequence`.
-- [ ] Decide on and build (or skip) the v2 importer.
+- [x] ~~Decide on and build (or skip) the v2 importer.~~ Skipped (D5).
 
 ### Phase 3 — Voice
 - [ ] `IVoiceConversation` loop: PTT, wake word, follow-up (L4, L5).
@@ -820,9 +834,10 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
 - [ ] Live video frames (realtime backend only).
 
 ### Every phase (per CLAUDE.md)
-- [ ] README.md
-- [ ] `skills/` — `shiny-aiconversation` skill rewritten for the new API, trigger keywords updated.
-- [ ] Docs site (`~/Desktop/dev/documentation`): AI conversation pages + release notes (`### 3.0 - TBD`, breaking).
+- [x] README.md (Phase 1: root README section + package readme)
+- [x] `skills/` — `shiny-aiconversation` skill rewritten for the new API, trigger keywords updated (Phase 1).
+- [x] Docs site (`~/Desktop/dev/documentation`): AI conversation pages + release notes (`### 3.0 - TBD`, breaking) (Phase 1;
+      voice / chat view / tools pages carry a "2.x, being rebuilt" caution until their phase).
 
 ---
 
@@ -843,15 +858,14 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
 | D12 | Can the assistant keep notes the user doesn't hear? | **Yes** (2026-10-21). Path-based memory documents in Session / Global / Profile scopes, all in v3.0; silent `memory` tool; user can view, edit and delete everything; soft limits fed back to the model; versioned writes; no binary content. See §4.8. |
 | D11 | What happens when the token count gets high? | **The library reports, the UI warns** (2026-10-21). `ContextPressure` Normal/Warning/Critical + event; manual `Compact()`. Auto-compaction kept as a 95% safety net (confirmed 2026-10-21; configurable, can be disabled). See §4.4. |
 | D10 | Do sessions end? | **No** (2026-10-21). Token-based like a Claude conversation window: rolling compaction, no `End`, no idle timeout. Removal is `Delete` only. See §4.4, §4.6. |
+| D2a | Rename `MessageStores.SqliteDocDb` → `Stores.SqliteDocDb`? | **Yes** (2026-10-29), as part of the break; done when the store is rebuilt in Phase 2. |
+| D4 | IDs: `string` or `Guid`? | **`string`, ULID-style and sortable** (2026-10-29). Matches the v2 store and ChatView. |
+| D5 | Ship a v2 → v3 history importer? | **No** (2026-10-29). Document a fresh start; revisit only if users ask. |
+| D6 | Where does `ContextWindow` come from when the app doesn't set it? | **Optional `IChatClientProvider.ContextWindow`** (2026-10-29); no built-in model table (it goes stale). |
+| D7 | Persist system prompts / tool definitions per session? | **No** (2026-10-29): they're rebuilt by interceptors on load. A hash + names may be stored later for debugging. |
+| D8 | Encrypt stored conversations at rest? | **Left to the store implementation** (2026-10-29); called out in the docs. |
 | D9 | Does the manager keep sessions in memory? | **No** (2026-10-21). Stateless; every `Get` rehydrates from the store. See §4.6. |
 
 ### Still open
 
-| # | Question | Recommendation |
-|---|----------|----------------|
-| D2a | Rename `MessageStores.SqliteDocDb` → `Stores.SqliteDocDb` as part of the break? | Yes, since the store contract changes completely anyway. |
-| D4 | IDs: `string` or `Guid`? | `string` (ULID-style, sortable); matches the current store and ChatView. |
-| D5 | Ship a v2 → v3 history importer? | Probably not; document a fresh start unless users ask. |
-| D6 | Where does `ContextWindow` come from when the app doesn't set it? | Optional `IChatClientProvider.ContextWindow`; no built-in model table (it goes stale). |
-| D7 | Persist system prompts / tool definitions per session? | Store a hash + names only (for debugging), not the full text; they're rebuilt by interceptors on resume. |
-| D8 | Encrypt stored conversations at rest? | Leave to the store implementation; note it in docs. |
+None for Phase 1.

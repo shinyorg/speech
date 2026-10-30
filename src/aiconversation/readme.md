@@ -1,309 +1,117 @@
 # Shiny.AiConversation
 
-A centralized AI service library for .NET MAUI apps that orchestrates chat, speech recognition, wake word detection, text-to-speech, and persistent message history into a single `IAiConversationService` interface.
+Session-based AI conversations for .NET apps on top of [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai/):
+streamed replies, typed questions, persisted and resumable sessions, and token/context tracking.
 
 [![NuGet](https://img.shields.io/nuget/v/Shiny.AiConversation.svg)](https://www.nuget.org/packages/Shiny.AiConversation/)
 
+> **v3 is a rewrite in progress.** The core text-session API below is done. The voice loop (wake word,
+> text-to-speech, interruption, acknowledgements), the MAUI chat adapter and the SQLite session store are
+> being rebuilt on top of sessions and are not in this version yet. The core package no longer depends on
+> Shiny.Speech or Shiny.Audio.
+
 ## Features
 
-- **Chat Integration** — Send text or voice messages to any AI backend via [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai/)
-- **Wake Word Detection** — Hands-free activation with continuous keyword listening
-- **Speech-to-Text / Text-to-Speech** — Full voice loop powered by [Shiny.Speech](https://github.com/shinyorg/speech)
-- **Acknowledgement Modes** — None, AudioBlip (sound effects), LessWordy (concise TTS), or Full (complete TTS)
-- **Context Providers** — Pluggable `IContextProvider` visitor pattern for populating an `AiContext` per request. Each provider receives a mutable context containing system prompts, AI tools, quiet words, speech-to-text options, and text-to-speech options. A built-in `ContextProvider` handles time-based prompts, acknowledgement-aware voice prompts, and DI-registered `AITool` instances.
-- **Persistent Chat History** — Pluggable `IMessageStore` for storing and querying past conversations
-- **AI History Lookup Tool** — Automatically available when an `IMessageStore` is registered, lets the AI search past conversations on its own
-- **Voice Selection Tools** — Optional `AddVoiceSelectionTools()` enables the AI to list voices, play samples, and switch its own TTS voice mid-conversation
-- **State Management** — Observable `AiState` (Idle / Listening / Thinking / Responding) with events
-- **Sound Effects** — Configurable sound stream factories for each state transition
-- **Conversation Continuation** — AI responses ending with a question automatically keep the microphone open for a reply
-- **Voice Interruption** — Configurable quiet words (e.g., "stop", "cancel") via `AiContext.QuietWords` immediately silence TTS and break out of the conversation. Any other speech during TTS interrupts and continues the conversation with the new utterance.
-- **Speech Options** — Configurable `SpeechToTextOptions` and `TextToSpeechOptions` via `AiContext` (culture, silence timeout, voice, speech rate, etc.)
-
-## TODO
-- Sessions - ability to start different AI sessions based on time passed
-- Acknowledgement sounds is present, but we need acknowledgement "Hi User" or "What can I help you with?"
-  - Manually activation could just be a sound?  Maybe only the wake word should have a greeting, and manual text input doesn't need it?
-- Speech to text - Wait for anything? then 2 seconds of silence
-
-## Installation
-
-```bash
-dotnet add package Shiny.AiConversation
-```
+- **Sessions** — `IAiSessionManager` starts, resumes (`Get` / `GetLatest`), queries and deletes sessions. Sessions never end; they're persisted and can be picked up again at any time
+- **Streaming turns** — `session.Send(...)` returns an `IAiTurn` whose events stream text as it arrives; a new `Send` supersedes the active turn
+- **Typed questions** — the model calls the built-in `ask_user` tool when it needs an answer; the session moves to `AwaitingUser` with `PendingQuestions` (optionally with multiple-choice `AiChoice`s). A reply that ends in `?` still keeps the conversation open
+- **Interruption** — `turn.Interrupt(spokenText)` records what the user actually heard, and the model is told the reply was cut off
+- **Usage & context** — cumulative `SessionUsage` for billing and a `ContextSnapshot` for how full the context window is, with `Normal` / `Warning` / `Critical` pressure for the UI to act on
+- **Interceptors** — `ISessionInterceptor` adds tools and system prompts per session (`OnSessionLoaded`) or per turn (`OnBeforeTurn`), optionally by `Profile`
+- **Honest persistence** — the user message is stored before the model is called and the reply is stored as streaming then finalized, so failures and crashes leave an accurate record. Tool calls are persisted too
+- **One event stream** — `session.GetEvents()` is an `IAsyncEnumerable` that starts with a `Snapshot`, so a UI binds to one ordered stream
 
 ## Quick Start
 
-### 1. Register the service
-
 ```csharp
-using Shiny.AiConversation;
-
-var builder = MauiApp.CreateBuilder();
-builder
-    .UseMauiApp<App>()
-    .ConfigureFonts(fonts => { ... });
-
 // Register an IChatClient in DI (from any Microsoft.Extensions.AI-compatible provider)
 builder.Services.AddChatClient(new OpenAIClient("your-api-key").GetChatClient("gpt-4o").AsIChatClient());
 
 builder.Services.AddShinyAiConversation(opts =>
 {
-    // Optional — enable persistent history (ChatLookupAITool is added automatically)
-    opts.SetMessageStore<MyMessageStore>();
-});
-
-return builder.Build();
-```
-
-### 2. Chat Client Setup
-
-By default, the library resolves `IChatClient` from DI. Simply register your chat client with the container:
-
-```csharp
-builder.Services.AddChatClient(new OpenAIClient("your-api-key").GetChatClient("gpt-4o").AsIChatClient());
-```
-
-#### Shiny.AiConversation.OpenAi
-
-A ready-made static OpenAI provider. Works with any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Ollama, etc.).
-
-```bash
-dotnet add package Shiny.AiConversation.OpenAi
-```
-
-```csharp
-builder.Services.AddShinyAiConversation(opts =>
-{
-    opts.AddStaticOpenAIChatClient(
-        apiToken: "your-api-key",
-        endpointUri: "https://api.openai.com/v1",
-        modelName: "gpt-4o"
-    );
+    opts.AddInterceptor<MyInterceptor>();                       // optional: tools + prompts
+    opts.AddTool(AIFunctionFactory.Create(GetWeather), AiToolFlags.None);
+    // opts.SetSessionStore<MyStore>();                         // default: in-memory
 });
 ```
 
-#### Shiny.AiConversation.Maui.GithubCopilot
-
-A MAUI-specific provider that authenticates via the GitHub device code flow and uses the Copilot API. Tokens are stored in `SecureStorage`. Authentication is fully self-contained — the library shows a popup with the device code, copies it to the clipboard, and opens the browser for the user to authorize.
-
-```bash
-dotnet add package Shiny.AiConversation.Maui.GithubCopilot
-```
+### Chat client providers
 
 ```csharp
-builder.Services.AddShinyAiConversation(opts =>
-{
-    opts.AddGithubCopilotChatClient();
-});
+// Ready-made static OpenAI-compatible provider (Shiny.AiConversation.OpenAi)
+opts.AddStaticOpenAIChatClient(apiToken: "your-api-key", endpointUri: "https://api.openai.com/v1", modelName: "gpt-4o");
+
+// MAUI GitHub Copilot — self-contained device-code OAuth, tokens in SecureStorage (Shiny.AiConversation.Maui.GithubCopilot)
+opts.AddGithubCopilotChatClient();
 ```
 
-No additional setup is needed — the provider handles the entire OAuth flow, token exchange, caching, and re-authentication on expiry.
+For other backends, implement `IChatClientProvider` and register with `opts.SetChatClientProvider<MyProvider>()`.
+Set `ContextWindow` on the provider (or `AiSessionSettings.ContextWindow`) to get context pressure.
 
-#### Custom Provider
-
-For other backends, implement `IChatClientProvider`:
-
-```csharp
-using Microsoft.Extensions.AI;
-using Shiny.AiConversation;
-
-public class MyChatClientProvider : IChatClientProvider
-{
-    public async Task<IChatClient> GetChatClient(CancellationToken cancelToken = default)
-    {
-        // Handle auth, token refresh, etc.
-        return BuildChatClient();
-    }
-}
-
-// Register it:
-builder.Services.AddShinyAiConversation(opts =>
-{
-    opts.SetChatClientProvider<MyChatClientProvider>();
-});
-```
-
-### 3. Implement `IMessageStore` (optional)
-
-Provide persistent storage for chat history. Without this, `GetChatHistory` and `ClearChatHistory` will throw.
+### Talk to the AI
 
 ```csharp
-using Shiny.AiConversation;
-
-public class MyMessageStore : IMessageStore
+public class ChatViewModel(IAiSessionManager sessions)
 {
-    public Task Store(string? userTriggeringMessage, ChatResponse response, CancellationToken cancellationToken)
+    IAiSession? session;
+
+    public async Task Send(string text)
     {
-        // Persist the complete AI response
+        this.session ??= await sessions.GetLatest() ?? await sessions.Start();
+
+        var turn = this.session.Send(AiInput.Text(text));
+        await foreach (var e in turn.Events)
+        {
+            if (e is TextDelta delta)
+                AppendToBubble(delta.Text);
+        }
+
+        var result = await turn.Completion;   // never throws; check result.Outcome
+        if (result.Outcome == AiTurnOutcome.AwaitingUser)
+            ShowChoices(this.session.PendingQuestions);
     }
 
-    public Task Clear(DateTimeOffset? beforeDate = null)
-    {
-        // Clear all or messages before the given date
-    }
-
-    public Task<IReadOnlyList<AiChatMessage>> Query(
-        string? messageContains = null,
-        DateTimeOffset? fromDate = null,
-        DateTimeOffset? toDate = null,
-        int? limit = null,
-        CancellationToken cancellationToken = default)
-    {
-        // Query with optional filters, return ordered by timestamp
-    }
+    // a tapped choice goes back as a normal message
+    public void Answer(AiQuestion question, AiChoice choice)
+        => this.session!.Send(AiInput.Answer(question, choice.Id));
 }
 ```
 
-### 4. Use the service
+A UI that wants everything (both sides of the conversation, state, usage, errors) subscribes once:
 
 ```csharp
-public class ChatViewModel(IAiConversationService aiService) : ObservableObject
+await foreach (var e in session.GetEvents(ct))   // first item is always a Snapshot
 {
-    public async Task SendMessage(string text)
+    switch (e)
     {
-        await aiService.TalkTo(text, CancellationToken.None);
-    }
-
-    public async Task UseMicrophone()
-    {
-        var access = await aiService.RequestAccess();
-        if (access != AccessState.Available)
-            return;
-
-        await aiService.ListenAndTalk(CancellationToken.None);
-    }
-
-    public async Task StartWakeWord()
-    {
-        await aiService.StartWakeWord("Hey Assistant");
+        case MessageAdded m: ...; break;
+        case TurnEventOccurred { Event: TextDelta d }: ...; break;
+        case StateChanged s: ...; break;
+        case ContextPressureChanged p: ...; break;  // e.g. "this conversation is getting long"
     }
 }
 ```
-
-## MAUI Chat UI
-
-`Shiny.AiConversation.Maui` ships `AiChatView` — a chat screen already wired to
-`IAiConversationService`. It derives from the [Shiny.Maui.Controls](https://shinylib.net/client/controls/)
-`ChatView`, so every style, template and behavior property of the base control still applies, while
-sends, AI replies, voice turns, the typing indicator and message-store history are handled for you.
-
-```bash
-dotnet add package Shiny.AiConversation.Maui
-```
-
-```xml
-<ContentPage xmlns:ai="http://shiny.net/maui/aiconversation">
-    <ai:AiChatView BotName="Aura"
-                   BotAvatar="bot.png"
-                   GreetingMessage="Hi! What can I help you with?"
-                   ShowMicrophoneAction="True"
-                   MyBubbleColor="{StaticResource Primary}"
-                   OtherBubbleColor="#F0EEFF"
-                   BubbleCornerRadius="16" />
-</ContentPage>
-```
-
-See the [documentation](https://shinylib.net/aiconversation/chat-view) for the full property list.
 
 ## API Overview
 
-### IAiConversationService
-
-| Member | Description |
-|--------|-------------|
-| `RequestAccess()` | Check speech-to-text access — returns `Available` or `Restricted` |
-| `TalkTo(string, CancellationToken)` | Send a text message to the AI |
-| `ListenAndTalk(CancellationToken)` | Capture speech via microphone and send to AI |
-| `StartWakeWord(string)` | Begin continuous wake word detection |
-| `StopWakeWord()` | Stop wake word detection |
-| `GetChatHistory(...)` | Query persisted chat history with optional filters |
-| `ClearChatHistory(...)` | Clear persisted history (all or before a date) |
-| `ClearCurrentChat()` | Clear in-memory session messages |
-| `Status` | Current `AiState` (Idle / Listening / Thinking / Responding) |
-| `Acknowledgement` | Get/set the response delivery mode |
-| `StatusChanged` | Event fired with the new `AiState` on any state change |
-| `AiResponded` | Event fired when the AI completes a response with `AiResponse` (Response, WasReadAloud, ExpectsResponse) |
-
-### AiContext
-
-The `AiContext` is a mutable context object populated by `IContextProvider` implementations before each AI request:
-
-| Property | Description |
-|----------|-------------|
-| `Acknowledgement` | The current acknowledgement mode (set by the service before providers run) |
-| `SystemPrompts` | System prompt strings to include in the chat request |
-| `Tools` | AI tools available for the request |
-| `QuietWords` | Words that stop TTS and break the conversation loop (default: cancel, quiet, shut up, stop, nevermind, never mind, hush) |
-| `SpeechToTextOptions` | Options for speech-to-text (culture, silence timeout, prefer on-device) |
-| `TextToSpeechOptions` | Options for text-to-speech (culture, voice, speech rate, pitch, volume) |
-
-### Acknowledgement Modes
-
-| Mode | Behavior |
-|------|----------|
-| `None` | No audio feedback or text-to-speech |
-| `AudioBlip` | Short sound effects at state transitions |
-| `LessWordy` | Text-to-speech with a "be concise" system prompt |
-| `Full` | Text-to-speech with full unmodified responses |
-
-### ChatLookupAITool
-
-When an `IMessageStore` is registered via `SetMessageStore<T>()`, the built-in `ContextProvider` automatically adds a `ChatLookupAITool` (`lookup_chat_history`) to every request. This allows the AI to autonomously search past conversations when the user asks about previous discussions — no extra code required.
-
-### VoiceSelectionTools (optional)
-
-Call `AddVoiceSelectionTools()` during registration to give the AI three voice-related tools:
-
-| Tool | Description |
+| Type | Description |
 |------|-------------|
-| `get_available_voices` | Lists all available TTS voices, optionally filtered by culture code |
-| `play_voice_sample` | Speaks a sample phrase using a specific voice so the user can hear it |
-| `change_voice` | Switches the AI's speaking voice; persists for the session |
-
-```csharp
-builder.Services.AddShinyAiConversation(opts =>
-{
-    opts.AddStaticOpenAIChatClient(...);
-    opts.AddVoiceSelectionTools();
-});
-```
-
-Once registered, the user can say things like:
-- *"Can you play a few different voices for me?"*
-- *"Switch to a different voice"*
-- *"Use a British accent"*
-
-The selected voice is written directly to `IAiConversationService.TextToSpeechOptions`, which the service uses for all subsequent TTS responses. Requires `ITextToSpeechService` — available automatically when `AutoAddSpeechServices` is `true` (the default).
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                   IAiConversationService                     │
-│  (orchestrates chat, speech, sounds, history)    │
-├──────────┬──────────────┬───────────────────────┤
-│          │              │                       │
-│  IChatClientProvider    │    IMessageStore       │
-│  (default: resolves    │    (persistence)       │
-│   IChatClient from DI) │                        │
-│          │              │         │              │
-│    IChatClient     ISpeechToText  │   ChatLookupAITool
-│  (M.E.AI)          ITextToSpeech │   (optional AITool)
-│                    (Shiny.Speech) │              │
-│                         │         │              │
-│                    IAudioPlayer   │              │
-│                   (Shiny.Speech)  │              │
-└─────────────────────────────────────────────────┘
-```
+| `IAiSessionManager` | `Start(settings)`, `Get(id)`, `GetLatest()`, `Query(query)`, `Delete(id)`. Stateless: every load returns a new instance that the caller disposes |
+| `IAiSession` | `Send(input)`, `GetEvents()`, `GetMessages(beforeSequence, count)`, `SetTitle`, `UpdateSettings`; `State`, `PendingQuestions`, `Usage`, `Context`, `ActiveTurn` |
+| `IAiTurn` | `Events` (replayable), `Completion` (`AiTurnResult` with `Outcome`: Completed / AwaitingUser / Interrupted / Superseded / Failed), `Interrupt(spokenText)` |
+| `AiInput` | `Text(...)`, `Voice(...)` (asks for spoken-style replies and at most one question), `Answer(question, choiceIds)` |
+| `AiSessionSettings` | Persisted per session: `Profile`, `ContextWindow`, warning/critical thresholds, `Tags`, `Metadata`, `ExcludeFromSearch` |
+| `ISessionInterceptor` | `OnSessionLoaded` (runs on Start **and** every Get), `OnBeforeTurn`, `OnAfterTurn` |
+| `IAiSessionStore` | Session headers + append-only messages. `InMemoryAiSessionStore` is the default; serialize with `AiConversationJsonContext` |
+| `IChatClientProvider` | Supplies the `IChatClient`; optional `ContextWindow`. The session adds function invocation itself when the client lacks it |
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | IChatClient abstraction |
-| [Shiny.Speech](https://www.nuget.org/packages/Shiny.Speech) | Speech-to-text, text-to-speech, and audio playback |
+| [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | `IChatClient` abstraction and the tool loop |
 
-## License
+## Documentation
 
-MIT
+Full documentation: https://shinylib.net/aiconversation/
+

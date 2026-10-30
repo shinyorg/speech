@@ -7,8 +7,10 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.AI"/>
-        <ProjectReference Include="..\..\speech\Shiny.Speech\Shiny.Speech.csproj"/>
-        <EmbeddedResource Include="Resources\*.wav"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Shiny.AiConversation.Tests"/>
     </ItemGroup>
 
 </Project>
