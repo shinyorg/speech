@@ -4,11 +4,12 @@
         <TargetFramework>net10.0</TargetFramework>
         <UseMaui>true</UseMaui>
         <IsAotCompatible>true</IsAotCompatible>
-        <Description>Shiny AI Conversation - a drop-in .NET MAUI chat control (AiChatView) wired to IAiConversationService</Description>
+        <Description>Shiny AI Conversation for .NET MAUI - AiChatView (a ChatView bound to an AI session), push-to-talk, choice chips and an assistant memory view</Description>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <ProjectReference Include="..\Shiny.AiConversation.Voice\Shiny.AiConversation.Voice.csproj"/>
         <PackageReference Include="Microsoft.Maui.Controls"/>
         <PackageReference Include="Shiny.Maui.Controls"/>
     </ItemGroup>

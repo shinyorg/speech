@@ -60,7 +60,7 @@ public partial class BrowserTextToSpeechService(ILogger<BrowserTextToSpeechServi
             return;
 
         activeSpeakTcs?.TrySetResult();
-        activeSpeakTcs = new TaskCompletionSource();
+        activeSpeakTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         options ??= new TextToSpeechOptions();
 
         var lang = options.Culture?.Name ?? "";

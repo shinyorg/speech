@@ -68,7 +68,7 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
             );
         }
 
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         handler = new Handler(Looper.MainLooper!);
         audioManager = (AudioManager?)Android.App.Application.Context.GetSystemService(Context.AudioService);
 
@@ -243,7 +243,7 @@ public class SpeechToTextImpl(AndroidPlatform platform, ILogger<SpeechToTextImpl
         if (!IsListening)
             return Task.CompletedTask;
 
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         IsListening = false;
         audioManager?.AdjustStreamVolume(Stream.Music, Adjust.Unmute, VolumeNotificationFlags.RemoveSoundAndVibrate);
 

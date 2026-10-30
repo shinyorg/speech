@@ -1,5 +1,5 @@
 @page "/settings"
-@inject IAiConversationService AiService
+@inject ConversationHost Host
 @inject CloudProviderCredentials Creds
 @inject IJSRuntime JS
 @implements IDisposable
@@ -11,9 +11,25 @@
         <h3>Status</h3>
         <div class="settings-card">
             <div class="settings-row">
-                <span class="settings-label">AI Status</span>
-                <span class="settings-value">@AiService.Status</span>
+                <span class="settings-label">Voice Status</span>
+                <span class="settings-value">@Host.Voice.State</span>
             </div>
+            <div class="settings-row">
+                <span class="settings-label">Context</span>
+                <span class="settings-value">@contextText</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Conversation</h3>
+        <div class="settings-card">
+            <button class="btn-primary" @onclick="NewConversation">New Conversation</button>
+            <button class="btn-primary" @onclick="Compact">Compact Conversation</button>
+            @if (statusMessage != null)
+            {
+                <span class="settings-value">@statusMessage</span>
+            }
         </div>
     </div>
 
@@ -25,6 +41,15 @@
                 <label class="settings-label" for="acknowledgement">Acknowledgement</label>
                 <select id="acknowledgement" value="@selectedAcknowledgement" @onchange="OnAcknowledgementChanged">
                     @foreach (var option in Enum.GetNames<AiAcknowledgement>())
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            </div>
+            <div class="settings-row">
+                <label class="settings-label" for="interruption">Interruption</label>
+                <select id="interruption" value="@selectedInterruption" @onchange="OnInterruptionChanged">
+                    @foreach (var option in Enum.GetNames<InterruptionMode>())
                     {
                         <option value="@option">@option</option>
                     }
@@ -58,21 +83,26 @@
     <div class="settings-section">
         <h3>Danger Zone</h3>
         <div class="settings-card">
-            <button class="btn-danger" @onclick="ClearHistory">Clear All Chat History</button>
+            <button class="btn-danger" @onclick="ClearHistory">Delete All Conversations</button>
         </div>
     </div>
 
 </div>
 
 @code {
+    readonly CancellationTokenSource cts = new();
     string selectedAcknowledgement = "";
+    string selectedInterruption = "";
+    string? contextText;
     string? statusMessage;
     bool keysSaved;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        AiService.StatusChanged += OnStatusChanged;
-        selectedAcknowledgement = AiService.Acknowledgement.ToString();
+        selectedAcknowledgement = Host.VoiceOptions.Acknowledgement.ToString();
+        selectedInterruption = Host.VoiceOptions.Interruption.ToString();
+        ShowContext(await Host.GetSession());
+        _ = WatchVoice(cts.Token);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -85,28 +115,64 @@
         }
     }
 
+    async Task WatchVoice(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var _ in Host.Voice.GetEvents(ct))
+                await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    void ShowContext(IAiSession session)
+    {
+        var c = session.Context;
+        contextText = c.MaxTokens is { } max
+            ? $"{c.CurrentTokens:N0} of {max:N0} tokens ({c.Pressure}); billed {session.Usage.TotalTokens:N0}"
+            : $"~{c.CurrentTokens:N0} tokens{(c.IsEstimate ? " (estimated)" : "")}; billed {session.Usage.TotalTokens:N0}";
+    }
+
     async Task SaveKeys()
     {
         await Creds.SaveToStoreAsync(JS);
         keysSaved = true;
     }
 
-    void OnAcknowledgementChanged(ChangeEventArgs e)
+    async Task OnAcknowledgementChanged(ChangeEventArgs e)
     {
         var value = e.Value?.ToString() ?? "";
         if (Enum.TryParse<AiAcknowledgement>(value, out var parsed))
         {
-            AiService.Acknowledgement = parsed;
             selectedAcknowledgement = value;
+            await Host.UpdateVoice(o => o with { Acknowledgement = parsed });
         }
     }
 
-    async Task ClearHistory()
+    async Task OnInterruptionChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        if (Enum.TryParse<InterruptionMode>(value, out var parsed))
+        {
+            selectedInterruption = value;
+            await Host.UpdateVoice(o => o with { Interruption = parsed });
+        }
+    }
+
+    async Task NewConversation()
+    {
+        ShowContext(await Host.NewConversation());
+        statusMessage = "Started a new conversation.";
+    }
+
+    async Task Compact()
     {
         try
         {
-            await AiService.ClearChatHistory();
-            statusMessage = "Chat history cleared.";
+            var session = await Host.GetSession();
+            await session.Compact();
+            ShowContext(session);
+            statusMessage = "Older messages were summarized.";
         }
         catch (Exception ex)
         {
@@ -114,13 +180,19 @@
         }
     }
 
-    void OnStatusChanged(AiState state)
+    async Task ClearHistory()
     {
-        InvokeAsync(StateHasChanged);
+        try
+        {
+            await Host.DeleteAll();
+            ShowContext(await Host.GetSession());
+            statusMessage = "All conversations deleted.";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
     }
 
-    public void Dispose()
-    {
-        AiService.StatusChanged -= OnStatusChanged;
-    }
+    public void Dispose() => cts.Cancel();
 }

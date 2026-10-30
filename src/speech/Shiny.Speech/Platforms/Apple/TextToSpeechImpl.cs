@@ -57,7 +57,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         var utterance = BuildUtterance(text, options);
         ConfigureAudioSession();
 
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         writeTcs = tcs;
         scheduledBuffers = 0;
         writeCompleted = false;
@@ -143,6 +143,8 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
             return;
 
         Interlocked.Increment(ref scheduledBuffers);
+        // runs on AVFAudio's internal queue: only signal from here. writeTcs continues asynchronously, so the caller's
+        // next SpeakAsync (which stops the node) never runs on this queue - AVAudioPlayerNode.Stop() traps if it does
         node.ScheduleBuffer(pcm, () =>
         {
             var remaining = Interlocked.Decrement(ref scheduledBuffers);

@@ -67,7 +67,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         var resolved = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None);
 
         var stream = await synthesizer.SynthesizeTextToStreamAsync(resolved.Text);
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         mediaPlayer = new MediaPlayer();
         mediaPlayer.Source = MediaSource.CreateFromStream(stream, stream.ContentType);

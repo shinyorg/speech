@@ -6,7 +6,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Shiny.DocumentDb.Extensions.DependencyInjection"/>
         <PackageReference Include="Shiny.DocumentDb.Sqlite"/>
         <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3"/>
     </ItemGroup>

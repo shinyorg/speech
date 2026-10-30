@@ -17,7 +17,8 @@ static class MessageMapper
     /// interrupted replies as what was actually heard, and drops tool calls whose result never arrived
     /// (providers reject an unanswered tool call).
     /// </summary>
-    public static List<ChatMessage> ToChatMessages(IEnumerable<AiMessageDocument> messages)
+    /// <param name="images">Image bytes to include, by attachment id; any other image is mentioned as text.</param>
+    public static List<ChatMessage> ToChatMessages(IEnumerable<AiMessageDocument> messages, IReadOnlyDictionary<string, DataContent>? images = null)
     {
         var result = new List<ChatMessage>();
         foreach (var msg in messages)
@@ -28,16 +29,28 @@ static class MessageMapper
             switch (msg.Role)
             {
                 case MessageRole.User:
-                    var userContents = msg.Parts
-                        .Select(p => p switch
+                    var userContents = new List<AIContent>();
+                    foreach (var part in msg.Parts)
+                    {
+                        switch (part)
                         {
-                            TextPart t => t.Text,
-                            AnswerPart a => a.Text,
-                            _ => null
-                        })
-                        .Where(x => !String.IsNullOrEmpty(x))
-                        .Select(x => (AIContent)new TextContent(x))
-                        .ToList();
+                            case TextPart { Text.Length: > 0 } t:
+                                userContents.Add(new TextContent(t.Text));
+                                break;
+
+                            case AnswerPart { Text.Length: > 0 } a:
+                                userContents.Add(new TextContent(a.Text));
+                                break;
+
+                            case ImagePart i when images != null && images.TryGetValue(i.Attachment.AttachmentId, out var data):
+                                userContents.Add(data);
+                                break;
+
+                            case ImagePart i:
+                                userContents.Add(new TextContent($"[image: {i.Description ?? "photo"}]"));
+                                break;
+                        }
+                    }
 
                     if (userContents.Count > 0)
                         result.Add(new ChatMessage(ChatRole.User, userContents));
@@ -217,6 +230,10 @@ static class MessageMapper
     {
         null => String.Empty,
         string s => s,
+        // binary never goes into stored messages
+        DataContent d => $"[{d.MediaType} attachment]",
+        TextContent t => t.Text,
+        IEnumerable<AIContent> contents => String.Join("\n", contents.Select(ResultToString)),
         JsonElement e => e.ValueKind == JsonValueKind.String ? e.GetString() ?? String.Empty : e.GetRawText(),
         _ => JsonSerializer.Serialize(result, AIJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object)))
     };

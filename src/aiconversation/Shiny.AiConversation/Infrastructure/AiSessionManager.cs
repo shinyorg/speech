@@ -15,6 +15,7 @@ public class AiSessionManager(
     IAiMemoryStore? memoryStore = null,
     AiMemoryOptions? memoryOptions = null,
     IContextCompactor? compactor = null,
+    IAiAttachmentStore? attachmentStore = null,
     ILogger<AiSessionManager>? logger = null
 ) : IAiSessionManager
 {
@@ -22,6 +23,7 @@ public class AiSessionManager(
     readonly IAiMemoryStore memoryStore = memoryStore ?? new InMemoryAiMemoryStore();
     readonly AiMemoryOptions memoryOptions = memoryOptions ?? new AiMemoryOptions();
     readonly IContextCompactor compactor = compactor ?? new ChatClientContextCompactor(chatClientProvider);
+    readonly IAiAttachmentStore attachments = attachmentStore ?? new InMemoryAiAttachmentStore();
     readonly ILogger logger = logger ?? NullLogger<AiSessionManager>.Instance;
     IAiMemoryService? memory;
 
@@ -74,6 +76,7 @@ public class AiSessionManager(
     {
         await store.DeleteSession(sessionId, ct).ConfigureAwait(false);
         await this.memoryStore.Clear(MemoryScope.Session, sessionId, ct).ConfigureAwait(false);
+        await this.attachments.DeleteForSession(sessionId, ct).ConfigureAwait(false);
     }
 
 
@@ -94,6 +97,7 @@ public class AiSessionManager(
             this.interceptors,
             timeProvider,
             this.compactor,
+            this.attachments,
             this.memoryStore,
             this.memoryOptions,
             this.logger

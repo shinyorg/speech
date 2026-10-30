@@ -44,10 +44,10 @@ public static class AiConversationDocumentStoreExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(documentStoreKey);
 
         options.Services.TryAddSingleton<IAiSessionStore>(sp =>
-            new DocumentDbAiSessionStore(sp.GetRequiredService<IDocumentStoreProvider>().GetStore(documentStoreKey))
+            new DocumentDbAiSessionStore(sp.GetRequiredKeyedService<IDocumentStore>(documentStoreKey))
         );
         options.Services.TryAddSingleton<IAiMemoryStore>(sp =>
-            new DocumentDbAiMemoryStore(sp.GetRequiredService<IDocumentStoreProvider>().GetStore(documentStoreKey))
+            new DocumentDbAiMemoryStore(sp.GetRequiredKeyedService<IDocumentStore>(documentStoreKey))
         );
         return options;
     }
@@ -69,10 +69,10 @@ public static class AiConversationDocumentStoreExtensions
             }
             : resolver.Options;
 
-        opts.MapVersionProperty<StoredAiSession>(nameof(StoredAiSession.Version), x => x.Version, (x, v) => x.Version = v);
-        opts.MapVersionProperty<StoredAiSequence>(nameof(StoredAiSequence.Version), x => x.Version, (x, v) => x.Version = v);
-        opts.MapVersionProperty<StoredAiMemory>(nameof(StoredAiMemory.Version), x => x.Version, (x, v) => x.Version = v);
-        opts.MapFullTextProperty<StoredAiMessage>(x => x.Text!, FullTextLanguage.English);
+        opts.ConfigureDocument<StoredAiSession>(d => d.MapVersionProperty(nameof(StoredAiSession.Version), x => x.Version, (x, v) => x.Version = v));
+        opts.ConfigureDocument<StoredAiSequence>(d => d.MapVersionProperty(nameof(StoredAiSequence.Version), x => x.Version, (x, v) => x.Version = v));
+        opts.ConfigureDocument<StoredAiMemory>(d => d.MapVersionProperty(nameof(StoredAiMemory.Version), x => x.Version, (x, v) => x.Version = v));
+        opts.ConfigureDocument<StoredAiMessage>(d => d.MapFullTextProperty(x => x.Text!, FullTextLanguage.English));
         return opts;
     }
 }

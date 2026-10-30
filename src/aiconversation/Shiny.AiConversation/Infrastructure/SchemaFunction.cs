@@ -5,28 +5,44 @@ using Microsoft.Extensions.AI;
 namespace Shiny.AiConversation.Infrastructure;
 
 /// <summary>
-/// A tool with a hand-written JSON schema and a delegate body. Keeps built-in tools AOT/trim safe
-/// (no reflection over delegate parameters).
+/// A tool with a hand-written JSON schema and a delegate body. Keeps tools AOT/trim safe (no reflection
+/// over delegate parameters). Used by the built-in tools; available to apps and add-on packages.
 /// </summary>
-sealed class SchemaFunction(
-    string name,
-    string description,
-    string jsonSchema,
-    Func<AIFunctionArguments, CancellationToken, Task<string>> invoke
-) : AIFunction
+public sealed class SchemaFunction : AIFunction
 {
-    readonly JsonElement schema = JsonDocument.Parse(jsonSchema).RootElement.Clone();
+    readonly string name;
+    readonly string description;
+    readonly JsonElement schema;
+    readonly Func<AIFunctionArguments, CancellationToken, Task<object?>> invoke;
 
-    public override string Name => name;
-    public override string Description => description;
+
+    public SchemaFunction(string name, string description, string jsonSchema, Func<AIFunctionArguments, CancellationToken, Task<string>> invoke)
+        : this(name, description, jsonSchema, async (a, ct) => (object?)await invoke(a, ct).ConfigureAwait(false)) { }
+
+
+    /// <param name="invoke">May return AI content (e.g. text plus a <see cref="DataContent"/> image) as well as a string.</param>
+    public SchemaFunction(string name, string description, string jsonSchema, Func<AIFunctionArguments, CancellationToken, Task<object?>> invoke)
+    {
+        this.name = name;
+        this.description = description;
+        this.schema = JsonDocument.Parse(jsonSchema).RootElement.Clone();
+        this.invoke = invoke;
+    }
+
+
+    public override string Name => this.name;
+    public override string Description => this.description;
     public override JsonElement JsonSchema => this.schema;
 
     protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
-        => await invoke(arguments, cancellationToken).ConfigureAwait(false);
+        => await this.invoke(arguments, cancellationToken).ConfigureAwait(false);
 }
 
 
-static class ToolArguments
+/// <summary>
+/// Reads tool arguments whether the provider supplied JSON elements or plain values.
+/// </summary>
+public static class ToolArguments
 {
     public static string? GetString(this IDictionary<string, object?> args, string name)
     {

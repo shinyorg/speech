@@ -14,7 +14,9 @@ builder.Services.AddShinyAiConversation(opts =>
 });
 ```
 
-Already have a named Shiny.DocumentDb store? Add the mappings to its options and point at it:
+Already have a named Shiny.DocumentDb (14.x) store? Add the mappings to its options and point at it. Named
+stores are keyed `IDocumentStore` registrations (`AddDocumentStore` is in `Shiny.DocumentDb` itself; there is
+no `IDocumentStoreProvider` or separate DI extensions package):
 
 ```csharp
 services.AddDocumentStore("main", o =>

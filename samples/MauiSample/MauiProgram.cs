@@ -2,7 +2,6 @@ using MauiSample.Features.Settings;
 using MauiSample.Services;
 using Microsoft.Extensions.Logging;
 using Shiny;
-using Shiny.AiConversation;
 
 namespace MauiSample;
 
@@ -10,11 +9,17 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+#if DEBUG
+        // print managed crashes to the device console (the native crash report doesn't carry the message)
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Console.WriteLine($"[unhandled] {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) => Console.WriteLine($"[unobserved] {e.Exception}");
+#endif
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
             .UseShiny() // required: native speech/audio permission handling routes through Shiny.Core (AndroidPlatform)
             .UseShinyControls()
+            .UseShinyCamera()
             .UseShinyShell(cfg => cfg.AddGeneratedMaps())
             .ConfigureFonts(fonts =>
             {
@@ -22,15 +27,25 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
-        // AI Conversation
-        builder.Services.AddSingleton<IContextProvider, SampleContextProvider>();
+        // AI Conversation (v3 sessions): persisted in SQLite, with titles, conversation search and long-term memory
         builder.Services.AddShinyAiConversation(opts =>
         {
             opts.AddGithubCopilotChatClient();
-
-            var dbPath = Path.Combine(FileSystem.AppDataDirectory, "sample_ai.db");
-            opts.SetSqliteDocDbMessageStore(dbPath);
+            opts.SetSqliteDocDbStores(Path.Combine(FileSystem.AppDataDirectory, "sample_ai.db"));
+            opts.UseFileAttachments(Path.Combine(FileSystem.AppDataDirectory, "ai_attachments"));
+            opts.AddInterceptor<SampleInterceptor>();
+            opts.AddSessionTitles();
+            opts.AddConversationSearch();
+            opts.AddLongTermMemory();
         });
+
+        // Voice over the session: push-to-talk, wake word, interruption, sentence-streamed speech.
+        // It never registers speech engines - the native ones are registered below.
+        builder.Services.AddShinyAiConversationVoice(voice => voice.AddVoiceSelectionTools());
+        builder.Services.AddSingleton<ConversationHost>();
+
+        // The assistant can ask to use the camera ("point it at the label"); it asks first and shows the purpose.
+        builder.Services.AddAiConversationCamera();
 
         // Register native platform speech services
         builder.Services.AddSpeechServices();

@@ -63,8 +63,32 @@ public sealed class SessionLoadedContext(IAiSession session, bool isNew) : Sessi
 
 public sealed class TurnContext(IAiSession session, string turnId, AiInput input) : SessionContextBase(session)
 {
+    readonly Lock sync = new();
+    readonly List<AiInput> followUps = [];
+
     public string TurnId => turnId;
     public AiInput Input => input;
+
+    /// <summary>
+    /// Sends another user input within this same turn once the current model round ends: e.g. a camera tool
+    /// that ends the round and follows up with the photo for providers that can't take images in tool results.
+    /// The turn's events and reply continue from the follow-up.
+    /// </summary>
+    public void QueueFollowUp(AiInput followUp)
+    {
+        lock (this.sync)
+            this.followUps.Add(followUp);
+    }
+
+    internal List<AiInput> TakeFollowUps()
+    {
+        lock (this.sync)
+        {
+            var list = this.followUps.ToList();
+            this.followUps.Clear();
+            return list;
+        }
+    }
 }
 
 public sealed class CompactionContext(IAiSession session, AiMessageDocument? summary, bool wasHardTrim)

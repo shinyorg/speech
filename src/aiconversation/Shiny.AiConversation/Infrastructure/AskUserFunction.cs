@@ -52,13 +52,14 @@ sealed class AskUserFunction(bool singleQuestion, Action<IReadOnlyList<AiQuestio
     public override string Name => ToolName;
     public override JsonElement JsonSchema => Schema;
 
+    const string Common =
+        "Ask the user something you need before you can continue. Always ask the question in your reply text too: " +
+        "this tool only shows answer choices and keeps the conversation open for the reply. Calling it ends your turn. " +
+        "For a yes/no question give the choices {id: yes, label: Yes} and {id: no, label: No}. ";
+
     public override string Description => singleQuestion
-        ? "Ask the user something you need before you can continue. Always ask the question in your reply text too: " +
-          "this tool only shows answer choices and keeps the conversation open for the reply. Calling it ends your turn. " +
-          "Your reply is spoken aloud, so ask at most one question."
-        : "Ask the user something you need before you can continue. Always ask the question in your reply text too: " +
-          "this tool only shows answer choices and keeps the conversation open for the reply. Calling it ends your turn. " +
-          "You may ask several independent questions at once.";
+        ? Common + "Your reply is spoken aloud, so ask at most one question."
+        : Common + "You may ask several independent questions at once.";
 
     protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
     {

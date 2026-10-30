@@ -136,7 +136,7 @@ public class AndroidAudioPlayer(ILogger<AndroidAudioPlayer> logger) : IAudioPlay
             await mediaPlayer.SetDataSourceAsync(source);
 
             // PrepareAsync (not the blocking Prepare) so remote sources buffer off the calling thread.
-            var prepared = new TaskCompletionSource();
+            var prepared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnPrepared(object? sender, EventArgs e) => prepared.TrySetResult();
             void OnPrepareError(object? sender, MediaPlayer.ErrorEventArgs e)
                 => prepared.TrySetException(new InvalidOperationException($"Audio playback error: {e.What}"));

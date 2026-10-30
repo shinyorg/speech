@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <UseMaui>true</UseMaui>
+        <IsAotCompatible>true</IsAotCompatible>
+        <Description>Lets a Shiny.AiConversation assistant ask to use the camera (photo, or text/barcode/document scans) through Shiny's CameraView modal</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <PackageReference Include="Microsoft.Maui.Controls"/>
+        <PackageReference Include="Shiny.Maui.Controls.Camera"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Shiny.AiConversation.Tests"/>
+    </ItemGroup>
+
+</Project>

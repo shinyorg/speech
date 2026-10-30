@@ -26,7 +26,7 @@
                 <sc:TableView.Root>
                     <sc:TableRoot>
                         <sc:TableSection Title="Status">
-                            <sc:LabelCell Title="AI Status"
+                            <sc:LabelCell Title="Voice Status"
                                           ValueText="{Binding CurrentStatus}" />
                         </sc:TableSection>
 
@@ -48,13 +48,25 @@
                         </sc:TableSection>
 
                         <sc:TableSection Title="Interruption"
-                                         FooterText="When enabled, you can interrupt TTS by speaking.">
-                            <sc:SwitchCell Title="Enable Interruption"
-                                           On="{Binding InterruptionEnabled, Mode=TwoWay}" />
+                                         FooterText="QuietWords: say a quiet word to stop the AI. Full: any speech interrupts and becomes your next message (best with headphones). Off: the mic is muted while the AI speaks.">
+                            <sc:PickerCell Title="Interruption"
+                                           ItemsSource="{Binding InterruptionOptions}"
+                                           SelectedItem="{Binding SelectedInterruptionName, Mode=TwoWay}"
+                                           UsePickToClose="True" />
+                        </sc:TableSection>
+
+                        <sc:TableSection Title="Conversation"
+                                         FooterText="{Binding ContextText}">
+                            <sc:ButtonCell Title="New Conversation"
+                                           Command="{Binding NewConversationCommand}" />
+                            <sc:ButtonCell Title="Compact Conversation"
+                                           Command="{Binding CompactCommand}" />
+                            <sc:ButtonCell Title="What the AI Remembers"
+                                           Command="{Binding OpenMemoryCommand}" />
                         </sc:TableSection>
 
                         <sc:TableSection Title="Danger Zone">
-                            <sc:ButtonCell Title="Clear All Chat History"
+                            <sc:ButtonCell Title="Delete All Conversations"
                                            Command="{Binding ClearHistoryCommand}"
                                            ButtonTextColor="{StaticResource Danger}" />
                         </sc:TableSection>

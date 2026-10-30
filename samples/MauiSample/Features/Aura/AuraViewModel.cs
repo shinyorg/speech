@@ -1,23 +1,19 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MauiSample.Services;
 using Shiny;
 using Shiny.AiConversation;
-using Shiny.Audio;
-using Shiny.Speech;
+using Shiny.AiConversation.Voice;
 
 namespace MauiSample.Features.Aura;
 
 [ShellMap<AuraPage>("aura")]
-public partial class AuraViewModel(
-    IAiConversationService aiService,
-    ITextToSpeechService tts,
-    IDialogs dialogs
-) : ObservableObject, IPageLifecycleAware
+public partial class AuraViewModel(ConversationHost host, IDialogs dialogs) : ObservableObject, IPageLifecycleAware
 {
-    CancellationTokenSource? listenCts;
+    CancellationTokenSource? eventsCts;
 
-    public string StatusText => aiService.Status.ToString();
-    public AiState CurrentState => aiService.Status;
+    public VoiceState CurrentState => host.Voice.State;
+    public string StatusText => host.Voice.State.ToString();
 
     [ObservableProperty]
     string? lastResponseText;
@@ -39,140 +35,205 @@ public partial class AuraViewModel(
     public bool HasHeardText => !String.IsNullOrWhiteSpace(this.HeardText);
     public bool HasSpokenText => !String.IsNullOrWhiteSpace(this.SpokenText);
 
-    /// <summary>0..1 audio output level fed from the TTS service while it's speaking.</summary>
+    /// <summary>0..1 output level while speaking.</summary>
     [ObservableProperty]
     double audioLevel;
 
-    /// <summary>Pretty-formatted token burn for the most recent AI response, or null when none yet.</summary>
+    /// <summary>Token burn of the most recent reply, or null when none yet.</summary>
     [ObservableProperty]
     string? lastTokenBurn;
+
+    /// <summary>End of your utterance to the first audio of the reply.</summary>
+    [ObservableProperty]
+    string? latencyText;
 
     [RelayCommand]
     void DismissResponse() => this.IsResponseVisible = false;
 
+
+    /// <summary>What interrupted the last reply and how much of it had been heard.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasInterruptionText))]
+    string? interruptionText;
+
+    public bool HasInterruptionText => !String.IsNullOrWhiteSpace(this.InterruptionText);
+
+    public string InterruptionModeText => host.VoiceOptions.Interruption switch
+    {
+        InterruptionMode.QuietWords => "INTERRUPT: QUIET WORDS",
+        InterruptionMode.Full => "INTERRUPT: FULL",
+        _ => "INTERRUPT: OFF"
+    };
+
+
+    /// <summary>QuietWords → Full → Off: re-attaches the voice conversation with the new mode.</summary>
+    [RelayCommand]
+    async Task CycleInterruption()
+    {
+        var next = host.VoiceOptions.Interruption switch
+        {
+            InterruptionMode.QuietWords => InterruptionMode.Full,
+            InterruptionMode.Full => InterruptionMode.Off,
+            _ => InterruptionMode.QuietWords
+        };
+        await host.UpdateVoice(o => o with { Interruption = next });
+        this.OnPropertyChanged(nameof(this.InterruptionModeText));
+        this.InterruptionText = next switch
+        {
+            InterruptionMode.QuietWords => $"Say one of: {String.Join(", ", host.VoiceOptions.QuietWords)} - or answer its question (\"yes\", \"the second one\") before it finishes",
+            InterruptionMode.Full => "Just talk over K.I.T.T., or answer its question early (works best with headphones)",
+            _ => "The mic is muted while K.I.T.T. talks; tap the aura or STOP to interrupt"
+        };
+    }
+
+
+    [RelayCommand]
+    Task StopSpeaking() => host.Voice.StopSpeaking();
+
+
     [RelayCommand(AllowConcurrentExecutions = true)]
     async Task AuraTapped()
     {
-        if (aiService.Status == AiState.Idle)
+        try
         {
-            var access = await aiService.RequestAccess();
+            var access = await host.Voice.RequestAccess();
             if (access != AccessState.Available)
+            {
+                await dialogs.Alert("Microphone", $"Speech recognition is {access}.");
                 return;
+            }
 
-            this.listenCts = new CancellationTokenSource();
-            try
-            {
-                await aiService.ListenAndTalk(this.listenCts.Token);
-            }
-            catch (OperationCanceledException) { }
-            catch (InvalidOperationException) { }
-            finally
-            {
-                this.listenCts?.Dispose();
-                this.listenCts = null;
-            }
+            await host.EnsureVoice();
+
+            // tapping while it talks stops the reply and listens; tapping while it listens does nothing extra
+            if (host.Voice.State is VoiceState.Off or VoiceState.WaitingForWakeWord or VoiceState.Speaking or VoiceState.Thinking)
+                await host.Voice.PushToTalk();
         }
-        else if (aiService.WakeWord == null)
+        catch (Exception ex)
         {
-            this.listenCts?.Cancel();
+            await dialogs.Alert("Error", ex.Message);
         }
     }
 
-    public void OnAppearing()
+
+    public async void OnAppearing()
     {
-        aiService.StatusChanged += this.OnStatusChanged;
-        aiService.AiResponded += this.OnAiResponded;
-        aiService.SpeechResultReceived += this.OnSpeechResult;
-        aiService.SpeechOccurred += this.OnSpeechOccurred;
-        aiService.ErrorOccurred += this.OnErrorOccurred;
-        tts.AudioLevelChanged += this.OnAudioLevelChanged;
-        OnPropertyChanged(nameof(StatusText));
-        OnPropertyChanged(nameof(CurrentState));
+        this.eventsCts = new CancellationTokenSource();
+        var ct = this.eventsCts.Token;
+        this.Refresh();
+
+        var session = await host.GetSession();
+        _ = Task.Run(() => this.WatchVoice(ct), ct);
+        _ = Task.Run(() => this.WatchSession(session, ct), ct);
     }
+
 
     public void OnDisappearing()
     {
-        aiService.StatusChanged -= this.OnStatusChanged;
-        aiService.AiResponded -= this.OnAiResponded;
-        aiService.SpeechResultReceived -= this.OnSpeechResult;
-        aiService.SpeechOccurred -= this.OnSpeechOccurred;
-        aiService.ErrorOccurred -= this.OnErrorOccurred;
-        tts.AudioLevelChanged -= this.OnAudioLevelChanged;
+        this.eventsCts?.Cancel();
+        this.eventsCts = null;
     }
 
-    async void OnErrorOccurred(Exception ex)
-        => await dialogs.Alert("Error", ex.Message);
 
-    void OnSpeechResult(SpeechRecognitionResult result)
+    async Task WatchVoice(CancellationToken ct)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        try
         {
-            this.LivePartialText = result.IsFinal ? null : result.Text;
-        });
-    }
-
-    void OnAiResponded(AiResponse response)
-    {
-        var usage = response.Response.Usage;
-        var burn = AiChatTokens.FormatTokenFooter(
-            usage?.InputTokenCount,
-            usage?.OutputTokenCount,
-            usage?.TotalTokenCount
-        );
-
-        if (response.WasReadAloud)
-        {
-            if (burn is not null)
-                MainThread.BeginInvokeOnMainThread(() => this.LastTokenBurn = burn);
-            return;
-        }
-
-        if (response.Text is { } text)
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
+            await foreach (var e in host.Voice.GetEvents(ct))
             {
-                this.LastResponseText = text;
-                this.IsResponseVisible = true;
-                if (burn is not null)
-                    this.LastTokenBurn = burn;
-            });
-        }
-    }
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    switch (e)
+                    {
+                        case VoiceStateChanged s:
+                            this.Refresh();
+                            if (s.State != VoiceState.Speaking)
+                                this.AudioLevel = 0;
 
-    void OnStatusChanged(AiState state)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            OnPropertyChanged(nameof(StatusText));
-            OnPropertyChanged(nameof(CurrentState));
-            if (state != AiState.Responding)
-                this.AudioLevel = 0;
-            if (state == AiState.Listening)
-            {
-                this.HeardText = null;
-                this.SpokenText = null;
+                            if (s.State is VoiceState.Listening or VoiceState.FollowUp)
+                            {
+                                this.HeardText = null;
+                                this.SpokenText = null;
+                                this.LivePartialText = null;
+                            }
+                            break;
+
+                        case InterimTranscript t:
+                            this.LivePartialText = t.Text;
+                            break;
+
+                        case FinalTranscript t:
+                            this.LivePartialText = null;
+                            this.HeardText = t.Text;
+                            break;
+
+                        case SpeakingSentence s:
+                            this.SpokenText = String.IsNullOrEmpty(this.SpokenText) ? s.Text : this.SpokenText + " " + s.Text;
+                            break;
+
+                        case AudioLevel l:
+                            this.AudioLevel = l.Output;
+                            break;
+
+                        case SpeechInterrupted i:
+                            var heard = String.IsNullOrWhiteSpace(i.SpokenText) ? "nothing yet" : $"\"{i.SpokenText}\"";
+                            this.InterruptionText = i.Reason switch
+                            {
+                                InterruptionReason.Answer => $"Answered \"{i.HeardText}\" after hearing {heard}",
+                                InterruptionReason.QuietWord => $"Stopped by \"{i.HeardText}\" after hearing {heard}",
+                                InterruptionReason.NewSpeech => $"Talked over with \"{i.HeardText}\" after hearing {heard}",
+                                InterruptionReason.PushToTalk => $"Tapped to talk after hearing {heard}",
+                                _ => $"Stopped after hearing {heard}"
+                            };
+                            break;
+
+                        case ResponseLatency l:
+                            this.LatencyText = $"{l.Latency.TotalMilliseconds:N0} ms to first audio";
+                            break;
+
+                        case VoiceError err:
+                            _ = dialogs.Alert("Voice error", err.Error.Message);
+                            break;
+                    }
+                });
             }
-        });
+        }
+        catch (OperationCanceledException) { }
     }
 
-    void OnSpeechOccurred(ConversationSpeech speech)
+
+    async Task WatchSession(IAiSession session, CancellationToken ct)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        try
         {
-            switch (speech.Source)
+            await foreach (var e in session.GetEvents(ct))
             {
-                case ConversationSpeechSource.Heard:
-                    this.HeardText = speech.Text;
-                    break;
-                case ConversationSpeechSource.Spoken:
-                    this.SpokenText = speech.Text;
-                    break;
+                if (e is not MessageUpdated { Message: { Role: MessageRole.Assistant, Status: MessageStatus.Complete } reply })
+                    continue;
+
+                var burn = AiChatTokens.FormatTokenFooter(reply.Usage?.InputTokens, reply.Usage?.OutputTokens, reply.Usage?.TotalTokens);
+                var spoken = host.VoiceOptions.Acknowledgement >= AiAcknowledgement.LessWordy;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (burn != null)
+                        this.LastTokenBurn = burn;
+
+                    // without text-to-speech the reply is shown instead
+                    if (!spoken && reply.Text is { } text)
+                    {
+                        this.LastResponseText = text;
+                        this.IsResponseVisible = true;
+                    }
+                });
             }
-        });
+        }
+        catch (OperationCanceledException) { }
     }
 
-    void OnAudioLevelChanged(object? sender, double level)
+
+    void Refresh()
     {
-        MainThread.BeginInvokeOnMainThread(() => this.AudioLevel = level);
+        this.OnPropertyChanged(nameof(this.StatusText));
+        this.OnPropertyChanged(nameof(this.CurrentState));
     }
 }

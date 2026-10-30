@@ -5,10 +5,9 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 
 [![NuGet](https://img.shields.io/nuget/v/Shiny.AiConversation.svg)](https://www.nuget.org/packages/Shiny.AiConversation/)
 
-> **v3 is a rewrite in progress.** Text sessions, persistence (SQLite), compaction, assistant memory and
-> conversation search are done. The voice loop (wake word, text-to-speech, interruption, acknowledgements)
-> and the MAUI chat adapter are being rebuilt on top of sessions and are not in this version yet. The core
-> package no longer depends on Shiny.Speech or Shiny.Audio.
+> **v3 is a session-based rewrite** (breaking: `IAiConversationService`, `IMessageStore` and `IContextProvider`
+> are gone). The core package no longer depends on Shiny.Speech or Shiny.Audio; voice lives in
+> `Shiny.AiConversation.Voice`, the chat UI in `Shiny.AiConversation.Maui`.
 
 ## Features
 
@@ -24,6 +23,9 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 - **Assistant memory** — a silent `memory` tool lets the AI keep notes across conversations (session, profile or global scope) without reading them aloud. Only an index goes into each prompt, limits are fed back to the model, and `manager.Memory` lets the user see, edit and delete everything. On by default
 - **Conversation search** — opt-in `search_conversations` / `read_conversation` tools find things in past (and compacted) conversations; plus optional session titles and long-term memory from recent sessions' summaries
 - **SQLite persistence** — `Shiny.AiConversation.Stores.SqliteDocDb` stores sessions, messages and memory with database-checked concurrency and full-text search
+- **Voice** — `Shiny.AiConversation.Voice` drives a session by voice: push-to-talk, optional wake word, follow-up answers without the wake word, interruption (quiet words or full barge-in) and sentence-by-sentence text-to-speech that starts before the reply is finished. Works with any Shiny.Speech provider
+- **MAUI chat UI** — `AiChatView` binds a `ChatView` to a session: streamed bubbles, choice chips, history paging, photos, a push-to-talk action and context warnings; `AiMemoryView` shows (and edits) what the assistant remembers
+- **Images & camera** — `AiInput.WithImage(...)` sends photos (stored as attachments, never inline); `Shiny.AiConversation.Maui.Camera` lets the assistant ask to use the camera (photo, or text/barcode/document scans) after asking the user
 
 ## Quick Start
 
@@ -41,6 +43,12 @@ builder.Services.AddShinyAiConversation(opts =>
     opts.AddLongTermMemory();
     // opts.ConfigureMemory(m => m with { Enabled = false });   // memory is on by default
 });
+
+// Voice (register your Shiny.Speech providers yourself, e.g. AddSpeechServices() or a cloud provider)
+builder.Services.AddShinyAiConversationVoice(voice => voice.AddVoiceSelectionTools());
+
+// MAUI: let the assistant use the camera (needs .UseShinyCamera() on the app builder)
+builder.Services.AddAiConversationCamera();
 ```
 
 ### Chat client providers
@@ -115,6 +123,9 @@ await foreach (var e in session.GetEvents(ct))   // first item is always a Snaps
 | `CompactionSettings` | Per session: `AutoCompactThreshold` (0.95, null disables), `KeepRecentMessages`, `MaxMessages`, `FlushToMemory` |
 | `AiMemoryOptions` | `Enabled`, `DisabledProfiles` and the soft limits (document size, index size, scope size, writes per turn) |
 | `IChatClientProvider` | Supplies the `IChatClient`; optional `ContextWindow`. The session adds function invocation itself when the client lacks it |
+| `IVoiceConversation` | `Attach(session, options)`, `PushToTalk()`, `StopSpeaking()`, `Pause()` / `Resume()`, `Detach()`, `GetEvents()`; `State` (Off / WaitingForWakeWord / Listening / FollowUp / Thinking / Speaking / Paused) |
+| `VoiceOptions` | `WakeWord` (off by default), `Interruption` (Off / QuietWords / Full), `QuietWords`, `FollowUpTimeout`, `Acknowledgement` (None / AudioBlip / LessWordy / Full) |
+| `AiChatView` | MAUI `ChatView` bound to `Session` (or it resumes the latest session itself) |
 
 ## Dependencies
 

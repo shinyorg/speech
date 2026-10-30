@@ -22,7 +22,7 @@ public class AppleAudioDuplex(ILogger<AppleAudioDuplex> logger) : IAudioDuplex
         // macOS gates the microphone too: without asking first, the engine's input unit refuses to initialize (-10875)
         return MacMicrophoneAccess.Request();
 #else
-        var tcs = new TaskCompletionSource<AccessState>();
+        var tcs = new TaskCompletionSource<AccessState>(TaskCreationOptions.RunContinuationsAsynchronously);
         AVAudioSession.SharedInstance().RequestRecordPermission(granted =>
             tcs.TrySetResult(granted ? AccessState.Available : AccessState.Denied));
         return tcs.Task;

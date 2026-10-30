@@ -116,31 +116,34 @@ public class DocumentDbAiSessionStore(IDocumentStore store) : IAiSessionStore
         {
             for (var attempt = 1; ; attempt++)
             {
-                var counter = await store.Get(message.SessionId, Json.StoredAiSequence, ct).ConfigureAwait(false);
-                var next = (counter?.Next ?? 0) + 1;
-                var stored = message with { Sequence = next };
-
-                var unit = store.CreateUnitOfWork();
-                if (counter == null)
-                {
-                    unit.Add(new StoredAiSequence { Id = message.SessionId, Next = next }, Json.StoredAiSequence);
-                }
-                else
-                {
-                    counter.Next = next;
-                    unit.Update(counter, Json.StoredAiSequence);
-                }
-                unit.Add(Wrap(stored), Json.StoredAiMessage);
-
+                AiMessageDocument? stored = null;
                 try
                 {
-                    await unit.SaveChanges(ct).ConfigureAwait(false);
-                    return stored;
+                    // the counter bump and the message insert commit together or not at all
+                    await store.RunInTransaction(async session =>
+                    {
+                        var counter = await session.Get(message.SessionId, Json.StoredAiSequence, ct).ConfigureAwait(false);
+                        var next = (counter?.Next ?? 0) + 1;
+                        stored = message with { Sequence = next };
+
+                        if (counter == null)
+                        {
+                            session.Add(new StoredAiSequence { Id = message.SessionId, Next = next }, Json.StoredAiSequence);
+                        }
+                        else
+                        {
+                            counter.Next = next;
+                            session.Update(counter, Json.StoredAiSequence);
+                        }
+                        session.Add(Wrap(stored), Json.StoredAiMessage);
+                    }, true, ct).ConfigureAwait(false);
+
+                    return stored!;
                 }
                 catch (Exception) when (attempt < MaxAppendAttempts && !ct.IsCancellationRequested)
                 {
-                    // another writer took the sequence (version conflict or duplicate counter); the unit
-                    // rolled back, so nothing was written - try the next one
+                    // another writer took the sequence (version conflict or duplicate counter); the
+                    // transaction rolled back, so nothing was written - try the next one
                 }
             }
         }

@@ -9,8 +9,8 @@ namespace Shiny.AiConversation.Maui;
 /// this renders the text itself rather than only appending the buttons.
 /// </summary>
 /// <remarks>
-/// Tapping a choice sends its <see cref="AiChoice.Label"/> back as the user's answer. Nothing is matched
-/// locally beyond that - the model already has the question in context and resolves the answer itself.
+/// Tapping a choice sends <see cref="AiInput.Answer"/> with the choice id; the bubble shows (and the model
+/// receives) its <see cref="AiChoice.Label"/>.
 /// </remarks>
 public class AiChoiceBubbleView : ContentView
 {
@@ -19,7 +19,7 @@ public class AiChoiceBubbleView : ContentView
     readonly VerticalStackLayout root;
     readonly Label textLabel;
 
-    readonly HashSet<string> selectedLabels = new(StringComparer.Ordinal);
+    readonly HashSet<string> selectedIds = new(StringComparer.Ordinal);
     readonly List<Button> multiSendButtons = [];
 
     internal AiChoiceBubbleView(AiChatView chatView, AiChoiceTemplateSelector selector)
@@ -35,7 +35,7 @@ public class AiChoiceBubbleView : ContentView
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
-        this.selectedLabels.Clear();
+        this.selectedIds.Clear();
         this.multiSendButtons.Clear();
 
         if (this.BindingContext is not ChatMessage message)
@@ -76,9 +76,9 @@ public class AiChoiceBubbleView : ContentView
             button.IsEnabled = !answered;
 
             if (question.AllowMultiple)
-                button.Clicked += (_, _) => this.ToggleChoice(button, choice.Label);
+                button.Clicked += (_, _) => this.ToggleChoice(button, choice.Id);
             else
-                button.Clicked += async (_, _) => await this.SendAsync(message, choice.Label).ConfigureAwait(true);
+                button.Clicked += async (_, _) => await this.SendAsync(message, question, [choice.Id]).ConfigureAwait(true);
 
             chips.Children.Add(button);
         }
@@ -92,8 +92,8 @@ public class AiChoiceBubbleView : ContentView
             send.IsEnabled = false; // enabled once something is picked
             send.Clicked += async (_, _) =>
             {
-                if (this.selectedLabels.Count > 0)
-                    await this.SendAsync(message, String.Join(", ", this.selectedLabels)).ConfigureAwait(true);
+                if (this.selectedIds.Count > 0)
+                    await this.SendAsync(message, question, this.selectedIds.ToList()).ConfigureAwait(true);
             };
 
             container.Children.Add(send);
@@ -118,26 +118,26 @@ public class AiChoiceBubbleView : ContentView
         BackgroundColor = Colors.Transparent
     };
 
-    void ToggleChoice(Button button, string label)
+    void ToggleChoice(Button button, string choiceId)
     {
-        if (!this.selectedLabels.Remove(label))
-            this.selectedLabels.Add(label);
+        if (!this.selectedIds.Remove(choiceId))
+            this.selectedIds.Add(choiceId);
 
-        var isSelected = this.selectedLabels.Contains(label);
+        var isSelected = this.selectedIds.Contains(choiceId);
         button.BackgroundColor = isSelected ? this.chatView.OtherTextColor : Colors.Transparent;
         button.TextColor = isSelected ? this.chatView.OtherBubbleColor : this.chatView.OtherTextColor;
 
         foreach (var send in this.multiSendButtons)
-            send.IsEnabled = this.selectedLabels.Count > 0;
+            send.IsEnabled = this.selectedIds.Count > 0;
     }
 
-    async Task SendAsync(ChatMessage message, string answer)
+    async Task SendAsync(ChatMessage message, AiQuestion question, IReadOnlyList<string> choiceIds)
     {
         // One answer per question set - re-tapping a stale bubble would confuse the conversation.
         this.selector.MarkAnswered(message.MessageId);
         this.SetChoicesEnabled(false);
 
-        await this.selector.SendAnswerAsync(answer).ConfigureAwait(true);
+        await this.selector.SendAnswerAsync(question, choiceIds).ConfigureAwait(true);
     }
 
     void SetChoicesEnabled(bool enabled)

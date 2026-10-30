@@ -49,11 +49,13 @@
                 </Border>
 
                 <!-- Voice modulator (built in code-behind) -->
+                <!-- Fill (not Center): the code-behind sizes the bars from this host's height, so it must
+                     measure the row rather than its own 6pt bars -->
                 <HorizontalStackLayout x:Name="BarsHost"
                                        Grid.Row="1"
                                        Spacing="22"
                                        HorizontalOptions="Center"
-                                       VerticalOptions="Center" />
+                                       VerticalOptions="Fill" />
 
                 <!-- Bottom scanner channel -->
                 <Border Grid.Row="2"
@@ -98,6 +100,11 @@
                    CharacterSpacing="2"
                    TextColor="#FF8855"
                    HorizontalOptions="Center" />
+            <Label Text="{Binding LatencyText}"
+                   FontSize="11"
+                   CharacterSpacing="2"
+                   TextColor="#FF8855"
+                   HorizontalOptions="Center" />
             <Label Text="{Binding HeardText, StringFormat='YOU: {0}'}"
                    IsVisible="{Binding HasHeardText}"
                    FontSize="12"
@@ -114,6 +121,38 @@
                    HorizontalTextAlignment="Center"
                    LineBreakMode="WordWrap"
                    MaxLines="3" />
+
+            <!-- interruption testing: tap the aura while K.I.T.T. talks to barge in, say a quiet word ("stop"),
+                 or in Full mode just talk over it -->
+            <Label Text="{Binding InterruptionText}"
+                   IsVisible="{Binding HasInterruptionText}"
+                   FontSize="12"
+                   TextColor="#FFE000"
+                   HorizontalOptions="Center"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap"
+                   MaxLines="3" />
+            <HorizontalStackLayout Spacing="12" HorizontalOptions="Center" Margin="0,8,0,0">
+                <Button Text="{Binding InterruptionModeText}"
+                        Command="{Binding CycleInterruptionCommand}"
+                        FontSize="12"
+                        BackgroundColor="#330000"
+                        TextColor="#FF8855"
+                        BorderColor="#661100"
+                        BorderWidth="1"
+                        CornerRadius="6"
+                        Padding="12,6" />
+                <Button Text="STOP"
+                        Command="{Binding StopSpeakingCommand}"
+                        FontSize="12"
+                        FontAttributes="Bold"
+                        BackgroundColor="#330000"
+                        TextColor="#FF3A00"
+                        BorderColor="#661100"
+                        BorderWidth="1"
+                        CornerRadius="6"
+                        Padding="12,6" />
+            </HorizontalStackLayout>
         </VerticalStackLayout>
 
     </Grid>

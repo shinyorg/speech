@@ -1,23 +1,32 @@
 @page "/aura"
-@inject IAiConversationService AiService
+@inject ConversationHost Host
 @implements IDisposable
 
 <PageTitle>Aura</PageTitle>
 
 <div class="aura-container">
-    <div class="aura-orb-area">
+    <div class="aura-orb-area" @onclick="Tapped">
         <div class="aura-ripple @stateClass"></div>
         <div class="aura-outer-ring @stateClass"></div>
         <div class="aura-inner-orb @stateClass"></div>
     </div>
 
-    <div class="aura-status" style="color: @auraColor">@AiService.Status</div>
+    <div class="aura-status" style="color: @auraColor">@state</div>
+
+    @if (heardText != null)
+    {
+        <p class="aura-status">You: @heardText</p>
+    }
+    @if (latencyText != null)
+    {
+        <p class="aura-status">@latencyText</p>
+    }
 
     @if (isResponseVisible)
     {
         <div class="aura-response-panel">
             <div class="aura-response-header">
-                <span>Copilot</span>
+                <span>Assistant</span>
                 <button class="aura-dismiss" @onclick="DismissResponse">&times;</button>
             </div>
             <p>@lastResponseText</p>
@@ -26,59 +35,112 @@
 </div>
 
 @code {
+    readonly CancellationTokenSource cts = new();
+    VoiceState state = VoiceState.Off;
     string? lastResponseText;
+    string? heardText;
+    string? latencyText;
     bool isResponseVisible;
     string auraColor = "#6C5CE7";
     string stateClass = "idle";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        AiService.StatusChanged += OnStatusChanged;
-        AiService.AiResponded += OnAiResponded;
+        state = Host.Voice.State;
         UpdateState();
+        _ = WatchVoice(cts.Token);
+        _ = WatchSession(await Host.GetSession(), cts.Token);
     }
 
-    void OnStatusChanged(AiState state)
+    async Task Tapped()
     {
-        InvokeAsync(() =>
+        try
         {
-            UpdateState();
-            StateHasChanged();
-        });
-    }
-
-    void OnAiResponded(AiResponse response)
-    {
-        if (response.WasReadAloud)
-            return;
-
-        if (response.Text is { } text)
-        {
-            InvokeAsync(() =>
+            var access = await Host.Voice.RequestAccess();
+            if (access != Shiny.AccessState.Available)
             {
-                lastResponseText = text;
+                lastResponseText = $"Speech recognition is {access}.";
                 isResponseVisible = true;
-                StateHasChanged();
-            });
+                return;
+            }
+
+            await Host.EnsureVoice();
+            if (Host.Voice.State is VoiceState.Off or VoiceState.WaitingForWakeWord or VoiceState.Speaking or VoiceState.Thinking)
+                await Host.Voice.PushToTalk();
         }
+        catch (Exception ex)
+        {
+            lastResponseText = ex.Message;
+            isResponseVisible = true;
+        }
+    }
+
+    async Task WatchVoice(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in Host.Voice.GetEvents(ct))
+            {
+                await InvokeAsync(() =>
+                {
+                    switch (e)
+                    {
+                        case VoiceStateChanged s:
+                            state = s.State;
+                            UpdateState();
+                            break;
+                        case FinalTranscript t:
+                            heardText = t.Text;
+                            break;
+                        case ResponseLatency l:
+                            latencyText = $"{l.Latency.TotalMilliseconds:N0} ms to first audio";
+                            break;
+                        case VoiceError err:
+                            lastResponseText = err.Error.Message;
+                            isResponseVisible = true;
+                            break;
+                    }
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    async Task WatchSession(IAiSession session, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in session.GetEvents(ct))
+            {
+                // without text-to-speech the reply is shown instead
+                if (e is MessageUpdated { Message: { Role: MessageRole.Assistant, Status: MessageStatus.Complete, Text: { } text } }
+                    && Host.VoiceOptions.Acknowledgement < AiAcknowledgement.LessWordy)
+                {
+                    await InvokeAsync(() =>
+                    {
+                        lastResponseText = text;
+                        isResponseVisible = true;
+                        StateHasChanged();
+                    });
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     void UpdateState()
     {
-        (auraColor, stateClass) = AiService.Status switch
+        (auraColor, stateClass) = state switch
         {
-            AiState.Listening => ("#00D2FF", "listening"),
-            AiState.Thinking => ("#A29BFE", "thinking"),
-            AiState.Responding => ("#00B894", "responding"),
+            VoiceState.Listening or VoiceState.FollowUp => ("#00D2FF", "listening"),
+            VoiceState.Thinking => ("#A29BFE", "thinking"),
+            VoiceState.Speaking => ("#00B894", "responding"),
             _ => ("#6C5CE7", "idle")
         };
     }
 
     void DismissResponse() => isResponseVisible = false;
 
-    public void Dispose()
-    {
-        AiService.StatusChanged -= OnStatusChanged;
-        AiService.AiResponded -= OnAiResponded;
-    }
+    public void Dispose() => cts.Cancel();
 }

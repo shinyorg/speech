@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:ai="http://shiny.net/maui/aiconversation"
+             xmlns:ai="clr-namespace:Shiny.AiConversation.Maui;assembly=Shiny.AiConversation.Maui"
              xmlns:local="clr-namespace:MauiSample.Features.Chat"
              x:Class="MauiSample.Features.Chat.ChatPage"
              x:DataType="local:ChatViewModel"
-             Title="Chat">
+             Title="{Binding Title}">
 
-    <ai:AiChatView BotName="Copilot"
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="New" Command="{Binding NewConversationCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <ai:AiChatView Session="{Binding Session}"
+                   BotName="Copilot"
+                   AllowImages="True"
+                   ShowContextWarnings="True"
                    GreetingMessage="Hey! Ask me anything — or use the actions button to talk instead of typing."
                    ShowTokenUsage="True"
                    ShowMicrophoneAction="True"

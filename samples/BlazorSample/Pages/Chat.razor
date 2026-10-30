@@ -1,26 +1,48 @@
 @page "/chat"
-@inject IAiConversationService AiService
+@inject ConversationHost Host
 @implements IDisposable
 
 <PageTitle>Chat</PageTitle>
 
 <div class="chat-container">
-    <div class="chat-messages" @ref="messagesContainer">
+    <div class="chat-header">
+        <span>@(session?.Title ?? "Chat")</span>
+        <button class="btn-primary" @onclick="NewConversation">New conversation</button>
+    </div>
+
+    <div class="chat-messages">
         @foreach (var msg in messages)
         {
-            <div class="chat-bubble @(msg.Direction == ChatMessageDirection.User ? "mine" : "theirs")">
-                <div class="bubble-text">@msg.Message</div>
+            <div class="chat-bubble @(msg.IsUser ? "mine" : "theirs")">
+                <div class="bubble-text">@msg.Text</div>
+                @if (msg.Footer != null)
+                {
+                    <div class="bubble-time">@msg.Footer</div>
+                }
                 <div class="bubble-time">@msg.Timestamp.ToLocalTime().ToString("h:mm tt")</div>
             </div>
         }
 
-        @if (AiService.Status == AiState.Thinking || AiService.Status == AiState.Responding)
+        @if (isBusy && !streamingVisible)
         {
             <div class="chat-bubble theirs">
                 <div class="bubble-text typing-indicator">
                     <span></span><span></span><span></span>
                 </div>
             </div>
+        }
+
+        @if (!isBusy && session != null)
+        {
+            @foreach (var question in session.PendingQuestions.Where(x => x.HasChoices))
+            {
+                <div class="chat-choices">
+                    @foreach (var choice in question.Choices!)
+                    {
+                        <button class="btn-primary" @onclick="() => Answer(question, choice)">@choice.Label</button>
+                    }
+                </div>
+            }
         }
     </div>
 
@@ -29,122 +51,154 @@
                @bind="inputText"
                @bind:event="oninput"
                @onkeydown="HandleKeyDown"
-               placeholder="Ask Copilot something..."
-               disabled="@(AiService.Status != AiState.Idle)" />
+               placeholder="Ask something..."
+               disabled="@(session == null)" />
         <button class="send-button"
                 @onclick="Send"
-                disabled="@(String.IsNullOrWhiteSpace(inputText) || AiService.Status != AiState.Idle)">
+                disabled="@(String.IsNullOrWhiteSpace(inputText) || session == null)">
             Send
         </button>
     </div>
 </div>
 
 @code {
-    readonly List<AiChatMessage> messages = [];
+    sealed class Bubble
+    {
+        public required string Id { get; init; }
+        public bool IsUser { get; init; }
+        public string Text { get; set; } = "";
+        public string? Footer { get; set; }
+        public DateTimeOffset Timestamp { get; init; }
+    }
+
+    readonly List<Bubble> messages = [];
     string inputText = "";
-    ElementReference messagesContainer;
-    bool shouldScrollToBottom;
+    IAiSession? session;
+    CancellationTokenSource? cts;
+    string? streamingId;
+    bool isBusy;
+    bool streamingVisible;
 
     protected override async Task OnInitializedAsync()
     {
-        AiService.AiResponded += OnAiResponded;
-        AiService.StatusChanged += OnStatusChanged;
-
-        try
-        {
-            var history = await AiService.GetChatHistory(limit: 50);
-            messages.AddRange(history);
-        }
-        catch
-        {
-            // no message store or empty
-        }
+        Host.SessionChanged += OnSessionChanged;
+        await Show(await Host.GetSession());
     }
 
-    async Task Send()
+    async Task Show(IAiSession s)
     {
-        if (String.IsNullOrWhiteSpace(inputText))
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+        session = s;
+        messages.Clear();
+        streamingId = null;
+        streamingVisible = false;
+
+        var page = await s.GetMessages(null, 50);
+        foreach (var m in page.Messages)
+            Upsert(m);
+
+        isBusy = s.State is AiSessionState.Thinking or AiSessionState.Responding;
+        var token = cts.Token;
+        _ = Listen(s, token);
+        StateHasChanged();
+    }
+
+    async Task Listen(IAiSession s, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var e in s.GetEvents(ct))
+                await InvokeAsync(() => OnEvent(e));
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    void OnEvent(AiSessionEvent e)
+    {
+        switch (e)
+        {
+            case MessageAdded { Message: { Role: MessageRole.Assistant, Status: MessageStatus.Streaming } m }:
+                streamingId = m.MessageId;
+                streamingVisible = false;
+                break;
+
+            case MessageAdded m:
+                Upsert(m.Message);
+                break;
+
+            case TurnEventOccurred { Event: TextDelta d } when streamingId != null:
+                var bubble = messages.FirstOrDefault(x => x.Id == streamingId);
+                if (bubble == null)
+                {
+                    bubble = new Bubble { Id = streamingId, IsUser = false, Timestamp = DateTimeOffset.Now };
+                    messages.Add(bubble);
+                }
+                bubble.Text += d.Text;
+                streamingVisible = true;
+                break;
+
+            case MessageUpdated m:
+                Upsert(m.Message);
+                if (m.Message.MessageId == streamingId && m.Message.Status != MessageStatus.Streaming)
+                    streamingId = null;
+                break;
+
+            case StateChanged s:
+                isBusy = s.State is AiSessionState.Thinking or AiSessionState.Responding;
+                break;
+
+            case TitleChanged:
+                break;
+
+            case SessionError err:
+                messages.Add(new Bubble { Id = Guid.NewGuid().ToString("N"), Text = $"Error: {err.Error.Message}", Timestamp = DateTimeOffset.Now });
+                break;
+        }
+        StateHasChanged();
+    }
+
+    // only user and assistant text get a bubble; tool calls, memory and summaries don't
+    void Upsert(AiMessageDocument m)
+    {
+        if (m.Role is not (MessageRole.User or MessageRole.Assistant) || String.IsNullOrWhiteSpace(m.Text))
+            return;
+
+        var bubble = messages.FirstOrDefault(x => x.Id == m.MessageId);
+        if (bubble == null)
+        {
+            bubble = new Bubble { Id = m.MessageId, IsUser = m.Role == MessageRole.User, Timestamp = m.Timestamp };
+            messages.Add(bubble);
+        }
+        bubble.Text = m.Text!;
+        bubble.Footer = m.Usage is { } u ? AiChatTokens.FormatTokenFooter(u.InputTokens, u.OutputTokens, u.TotalTokens) : null;
+    }
+
+    void Send()
+    {
+        if (String.IsNullOrWhiteSpace(inputText) || session == null)
             return;
 
         var text = inputText;
         inputText = "";
-
-        messages.Add(new AiChatMessage(
-            Guid.NewGuid().ToString(),
-            text,
-            DateTimeOffset.Now,
-            ChatMessageDirection.User
-        ));
-        shouldScrollToBottom = true;
-
-        try
-        {
-            await AiService.TalkTo(text, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            messages.Add(new AiChatMessage(
-                Guid.NewGuid().ToString(),
-                $"Error: {ex.Message}",
-                DateTimeOffset.Now,
-                ChatMessageDirection.AI
-            ));
-        }
+        session.Send(AiInput.Text(text));
     }
 
-    async Task HandleKeyDown(KeyboardEventArgs e)
+    void Answer(AiQuestion question, AiChoice choice) => session?.Send(AiInput.Answer(question, choice.Id));
+
+    async Task NewConversation() => await Host.NewConversation();
+
+    void OnSessionChanged(object? sender, IAiSession s) => InvokeAsync(() => Show(s));
+
+    void HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !e.ShiftKey)
-            await Send();
-    }
-
-    void OnAiResponded(AiResponse response)
-    {
-        if (response.Text is { } text)
-        {
-            InvokeAsync(() =>
-            {
-                messages.Add(new AiChatMessage(
-                    Guid.NewGuid().ToString(),
-                    text,
-                    DateTimeOffset.Now,
-                    ChatMessageDirection.AI
-                ));
-                shouldScrollToBottom = true;
-                StateHasChanged();
-            });
-        }
-    }
-
-    void OnStatusChanged(AiState state)
-    {
-        InvokeAsync(StateHasChanged);
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender || shouldScrollToBottom)
-        {
-            shouldScrollToBottom = false;
-            await ScrollToBottom();
-        }
-    }
-
-    async Task ScrollToBottom()
-    {
-        try
-        {
-            await Task.Yield();
-        }
-        catch
-        {
-            // ignore
-        }
+            Send();
     }
 
     public void Dispose()
     {
-        AiService.AiResponded -= OnAiResponded;
-        AiService.StatusChanged -= OnStatusChanged;
+        Host.SessionChanged -= OnSessionChanged;
+        cts?.Cancel();
     }
 }

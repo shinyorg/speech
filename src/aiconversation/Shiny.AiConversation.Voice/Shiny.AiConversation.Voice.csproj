@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>$(BaseTargetFramework)</TargetFramework>
+        <IsAotCompatible>true</IsAotCompatible>
+        <Description>Voice conversations for Shiny.AiConversation sessions: wake word, push-to-talk, follow-up, interruption and sentence-streamed text-to-speech over Shiny.Speech</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
+        <ProjectReference Include="..\..\speech\Shiny.Speech\Shiny.Speech.csproj"/>
+        <EmbeddedResource Include="Resources\*.wav"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Shiny.AiConversation.Tests"/>
+    </ItemGroup>
+
+</Project>

@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shiny;
+using MauiSample.Services;
 using Shiny.AiConversation;
+using Shiny.AiConversation.Voice;
 using Shiny.Audio;
 using Shiny.Speech;
 
@@ -10,13 +12,13 @@ namespace MauiSample.Features.Settings;
 
 [ShellMap<SettingsPage>("settings")]
 public partial class SettingsViewModel(
-    IAiConversationService aiService,
-    ContextProvider contextProvider,
+    ConversationHost host,
     IDialogs dialogs,
     IServiceProvider services
 ) : ObservableObject, IPageLifecycleAware
 {
     readonly CloudProviderCredentials cloud = CloudProviderCredentials.Detect(services);
+    CancellationTokenSource? eventsCts;
 
     // API-key editor — only surfaces when a 3rd-party cloud provider (Azure/ElevenLabs/OpenAI/Typecast)
     // is registered. Editing writes to the mutable provider config, taking effect on the next request.
@@ -25,15 +27,29 @@ public partial class SettingsViewModel(
     public IReadOnlyList<CredentialField> CredentialFields => this.cloud.Fields;
 
     public string[] AcknowledgementOptions => Enum.GetNames<AiAcknowledgement>();
+    public string[] InterruptionOptions => Enum.GetNames<InterruptionMode>();
 
     public string SelectedAcknowledgementName
     {
-        get => aiService.Acknowledgement.ToString();
+        get => host.VoiceOptions.Acknowledgement.ToString();
         set
         {
-            if (Enum.TryParse<AiAcknowledgement>(value, out var parsed))
+            if (Enum.TryParse<AiAcknowledgement>(value, out var parsed) && parsed != host.VoiceOptions.Acknowledgement)
             {
-                aiService.Acknowledgement = parsed;
+                _ = host.UpdateVoice(o => o with { Acknowledgement = parsed });
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string SelectedInterruptionName
+    {
+        get => host.VoiceOptions.Interruption.ToString();
+        set
+        {
+            if (Enum.TryParse<InterruptionMode>(value, out var parsed) && parsed != host.VoiceOptions.Interruption)
+            {
+                _ = host.UpdateVoice(o => o with { Interruption = parsed });
                 OnPropertyChanged();
             }
         }
@@ -42,29 +58,20 @@ public partial class SettingsViewModel(
     [ObservableProperty]
     string wakeWordText = "Hey Copilot";
 
-    public bool IsWakeWordActive => aiService.WakeWord != null;
+    [ObservableProperty]
+    string? contextText;
+
+    public bool IsWakeWordActive => host.VoiceOptions.WakeWord != null && host.Voice.Session != null;
     public bool IsNotWakeWordActive => !this.IsWakeWordActive;
     public string WakeWordButtonText => this.IsWakeWordActive ? "Stop Wake Word" : "Start Wake Word";
-    public string CurrentStatus => aiService.Status.ToString();
-
-    public bool InterruptionEnabled
-    {
-        get => aiService.InterruptionEnabled;
-        set
-        {
-            aiService.InterruptionEnabled = value;
-            OnPropertyChanged();
-        }
-    }
+    public string CurrentStatus => host.Voice.State.ToString();
 
     public ObservableCollection<string> QuietWords { get; } = [];
 
-    public void OnAppearing()
+    public async void OnAppearing()
     {
-        aiService.StatusChanged += this.OnStatusChanged;
-
         QuietWords.Clear();
-        foreach (var word in contextProvider.GetQuietWords())
+        foreach (var word in host.VoiceOptions.QuietWords)
             QuietWords.Add(word);
 
         // Re-sync the editable key fields with the current config values.
@@ -72,16 +79,35 @@ public partial class SettingsViewModel(
             field.Reload();
 
         RefreshAll();
+        this.eventsCts = new CancellationTokenSource();
+        var ct = this.eventsCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var _ in host.Voice.GetEvents(ct))
+                    MainThread.BeginInvokeOnMainThread(RefreshAll);
+            }
+            catch (OperationCanceledException) { }
+        }, ct);
+
+        var session = await host.GetSession();
+        this.ShowContext(session);
     }
 
     public void OnDisappearing()
     {
-        aiService.StatusChanged -= this.OnStatusChanged;
+        this.eventsCts?.Cancel();
+        this.eventsCts = null;
     }
 
-    void OnStatusChanged(AiState state)
+    void ShowContext(IAiSession session)
     {
-        MainThread.BeginInvokeOnMainThread(RefreshAll);
+        var c = session.Context;
+        var usage = session.Usage;
+        this.ContextText = c.MaxTokens is { } max
+            ? $"Context: {c.CurrentTokens:N0} of {max:N0} tokens ({c.PercentUsed:P0}, {c.Pressure}). Billed so far: {usage.TotalTokens:N0} tokens in {usage.RequestCount} requests."
+            : $"Context: ~{c.CurrentTokens:N0} tokens{(c.IsEstimate ? " (estimated)" : "")}. Billed so far: {usage.TotalTokens:N0} tokens in {usage.RequestCount} requests.";
     }
 
     void RefreshAll()
@@ -91,13 +117,10 @@ public partial class SettingsViewModel(
         OnPropertyChanged(nameof(WakeWordButtonText));
         OnPropertyChanged(nameof(CurrentStatus));
         OnPropertyChanged(nameof(SelectedAcknowledgementName));
-        OnPropertyChanged(nameof(InterruptionEnabled));
+        OnPropertyChanged(nameof(SelectedInterruptionName));
     }
 
-    void SyncQuietWords()
-    {
-        contextProvider.SetQuietWords(QuietWords);
-    }
+    Task SyncQuietWords() => host.UpdateVoice(o => o with { QuietWords = QuietWords.ToList() });
 
     [RelayCommand]
     async Task AddQuietWord()
@@ -106,7 +129,7 @@ public partial class SettingsViewModel(
         if (!String.IsNullOrWhiteSpace(word))
         {
             QuietWords.Add(word.Trim());
-            SyncQuietWords();
+            await SyncQuietWords();
         }
     }
 
@@ -120,7 +143,7 @@ public partial class SettingsViewModel(
             if (index >= 0)
             {
                 QuietWords[index] = updated.Trim();
-                SyncQuietWords();
+                await SyncQuietWords();
             }
         }
     }
@@ -132,7 +155,7 @@ public partial class SettingsViewModel(
         if (confirm)
         {
             QuietWords.Remove(word);
-            SyncQuietWords();
+            await SyncQuietWords();
         }
     }
 
@@ -143,7 +166,7 @@ public partial class SettingsViewModel(
         {
             if (this.IsWakeWordActive)
             {
-                await aiService.StopWakeWord();
+                await host.UpdateVoice(o => o with { WakeWord = null });
             }
             else
             {
@@ -152,20 +175,49 @@ public partial class SettingsViewModel(
                     await dialogs.Alert("Error", "Please enter a wake word.");
                     return;
                 }
-                var access = await aiService.RequestAccess();
+                var access = await host.Voice.RequestAccess();
                 if (access != AccessState.Available)
                 {
-                    await dialogs.Alert("Error", "Speech recognition is not available on this device.");
+                    await dialogs.Alert("Error", $"Speech recognition is {access}.");
                     return;
                 }
-                await aiService.StartWakeWord(this.WakeWordText);
+                await host.UpdateVoice(o => o with { WakeWord = this.WakeWordText.Trim() });
+                await host.EnsureVoice();
             }
+            RefreshAll();
         }
         catch (Exception ex)
         {
             await dialogs.Alert("Error", ex.Message);
         }
     }
+
+    [RelayCommand]
+    async Task NewConversation()
+    {
+        var session = await host.NewConversation();
+        this.ShowContext(session);
+        await dialogs.Alert("New Conversation", "Started a fresh conversation.");
+    }
+
+    [RelayCommand]
+    async Task Compact()
+    {
+        var session = await host.GetSession();
+        try
+        {
+            await session.Compact();
+            this.ShowContext(session);
+            await dialogs.Alert("Compacted", "Older messages were folded into a summary.");
+        }
+        catch (Exception ex)
+        {
+            await dialogs.Alert("Error", ex.Message);
+        }
+    }
+
+    [RelayCommand]
+    Task OpenMemory() => Shell.Current.GoToAsync("memory");
 
     [RelayCommand]
     async Task SaveKeys()
@@ -183,8 +235,11 @@ public partial class SettingsViewModel(
     {
         try
         {
-            await aiService.ClearChatHistory();
-            await dialogs.Alert("Done", "Chat history cleared.");
+            if (!await dialogs.Confirm("Delete every conversation?", "This can't be undone."))
+                return;
+
+            await host.DeleteAll();
+            await dialogs.Alert("Done", "All conversations deleted.");
         }
         catch (Exception ex)
         {

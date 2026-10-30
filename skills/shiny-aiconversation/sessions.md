@@ -52,7 +52,28 @@ public interface IAiSession : IAsyncDisposable
 session.Send(AiInput.Text("What can I cook with eggs?"));
 session.Send(AiInput.Voice(heardText));          // tells the model its reply is spoken: plain prose, one question max
 session.Send(AiInput.Answer(question, "large")); // see questions.md
+
+// extra system instructions for this turn only (not stored with the message)
+session.Send(AiInput.Text(text).WithInstructions("Answer in French."));
 ```
+
+`AiInput.Instructions` (`IReadOnlyList<string>`, default empty) are added to the system prompt for that turn
+only, after the mode instructions; they are never persisted. The voice conversation uses this for
+`AiAcknowledgement.LessWordy`.
+
+```csharp
+// images: stored via IAiAttachmentStore, referenced from the user message by an ImagePart
+session.Send(AiInput.Text("What is this?").WithImage(bytes, "image/jpeg", "the plant", ImageRetention.DropAfterTurn));
+```
+
+See `images.md` for retention and attachment stores.
+
+### Follow-ups within a turn
+
+A tool added in `OnBeforeTurn` can call `TurnContext.QueueFollowUp(AiInput)`. When the model round ends (e.g. the
+tool set `FunctionInvokingChatClient.CurrentContext.Terminate = true`), the session stores the reply, appends the
+follow-up as a user message and streams another round **in the same turn**: one `IAiTurn`, continuing `Events`,
+`Result.Reply` = the last assistant message. Ignored when the round called `ask_user`.
 
 ## IAiTurn
 

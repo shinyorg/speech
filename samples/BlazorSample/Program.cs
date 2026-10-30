@@ -23,9 +23,7 @@ builder.Services.AddSpeechServices();
 // Detects the active cloud provider (if any) and backs its credentials with localStorage.
 builder.Services.AddSingleton(sp => CloudProviderCredentials.Detect(sp));
 
-// AI Conversation
-builder.Services.AddSingleton<InMemoryMessageStore>();
-builder.Services.AddSingleton<IContextProvider, SampleContextProvider>();
+// AI Conversation (v3 sessions, kept in memory in the browser)
 builder.Services.AddShinyAiConversation(opts =>
 {
     opts.AddStaticOpenAIChatClient(
@@ -33,7 +31,12 @@ builder.Services.AddShinyAiConversation(opts =>
         "https://api.openai.com/v1",
         "gpt-4o"
     );
-    opts.SetMessageStore<InMemoryMessageStore>();
+    opts.AddInterceptor<SampleInterceptor>();
+    opts.AddSessionTitles();
 });
+
+// Voice over the session; it never registers speech engines (the browser ones are registered above)
+builder.Services.AddShinyAiConversationVoice(voice => voice.AddVoiceSelectionTools());
+builder.Services.AddSingleton<ConversationHost>();
 
 await builder.Build().RunAsync();

@@ -3,24 +3,26 @@ using Shiny.Maui.Controls.Chat;
 namespace Shiny.AiConversation.Maui;
 
 /// <summary>
-/// Bridges <see cref="IAiConversationService"/> onto the provider driven <c>ChatView</c>. There is a
-/// single, global AI conversation (backed by the registered <see cref="IMessageStore"/>), so every
-/// session id resolves to that same logical conversation.
+/// Bridges one <see cref="IAiSession"/> onto the provider-driven <c>ChatView</c>. Every session id the control
+/// asks for resolves to that session.
 /// </summary>
 /// <remarks>
-/// <see cref="AiChatView"/> creates one of these for you. Register it (see
-/// <c>AddChatSessionProvider</c>) only when you want to drive a plain <c>ChatView</c> yourself.
+/// <see cref="AiChatView"/> creates one of these for you; use it directly only with a plain <c>ChatView</c>.
 /// </remarks>
-public class AiChatSessionProvider(IAiConversationService aiService, AiChatSettings settings) : IChatSessionProvider
+public class AiChatSessionProvider(IAiSession session, AiChatSettings settings, IAiAttachmentStore? attachments = null) : IChatSessionProvider
 {
-    /// <summary>The bot identity / history settings applied to every session this provider hands out.</summary>
+    public IAiSession Session => session;
     public AiChatSettings Settings => settings;
 
     /// <summary>
-    /// The most recently handed out session. Choice buttons route their answer through this so the
-    /// tapped label lands in the same conversation the bubble came from.
+    /// The live chat session; choice buttons route their answers through it.
     /// </summary>
     internal AiChatSession? Current { get; private set; }
+
+    /// <summary>
+    /// Raised when the session's context pressure changes (Warning / Critical / Normal).
+    /// </summary>
+    public event EventHandler<ContextSnapshot>? ContextPressureChanged;
 
     public Task<IChatSession> CreateSessionAsync(string[] userIds, CancellationToken cancellationToken = default)
         => Task.FromResult<IChatSession>(this.Track());
@@ -28,5 +30,10 @@ public class AiChatSessionProvider(IAiConversationService aiService, AiChatSetti
     public Task<IChatSession> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
         => Task.FromResult<IChatSession>(this.Track());
 
-    AiChatSession Track() => this.Current = new AiChatSession(aiService, settings);
+    AiChatSession Track()
+    {
+        var chat = new AiChatSession(session, settings, attachments);
+        chat.ContextPressureChanged += (s, e) => this.ContextPressureChanged?.Invoke(this, e);
+        return this.Current = chat;
+    }
 }

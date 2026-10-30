@@ -10,15 +10,14 @@
         <PackageVersion Include="Microsoft.CognitiveServices.Speech" Version="1.50.0"/>
         <PackageVersion Include="Xamarin.AndroidX.Core" Version="1.18.0"/>
         <PackageVersion Include="Xamarin.AndroidX.Fragment" Version="1.8.8.1"/>
-        <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.80"/>
+        <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.100"/>
         <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0"/>
         <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0"/>
         <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.7.0"/>
-        <PackageVersion Include="Shiny.DocumentDb.Extensions.DependencyInjection" Version="10.0.2"/>
-        <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="10.0.2"/>
-        <!-- Pinned above what Shiny.DocumentDb.Sqlite 10.0.2 brings (2.1.11 has advisory GHSA-2m69-gcr7-jv3q). -->
+        <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="14.1.0"/>
+        <!-- Pinned above what Microsoft.Data.Sqlite (via Shiny.DocumentDb.Sqlite) brings: 2.1.11 has advisory GHSA-2m69-gcr7-jv3q. -->
         <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14"/>
         <PackageVersion Include="OpenAI" Version="2.12.0"/>
         <PackageVersion Include="typecast-csharp" Version="0.3.7"/>
@@ -32,6 +31,7 @@
         <PackageVersion Include="Shiny.Hosting.Maui" Version="5.2.3"/>
         <PackageVersion Include="Shiny.Maui.Shell" Version="6.3.2"/>
         <PackageVersion Include="Shiny.Maui.Controls" Version="1.0.1-beta-0144"/>
+        <PackageVersion Include="Shiny.Maui.Controls.Camera" Version="2.1.0"/>
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
         <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9"/>

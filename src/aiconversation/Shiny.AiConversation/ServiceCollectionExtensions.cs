@@ -27,6 +27,7 @@ public static class AiConversationServiceCollectionExtensions
         services.TryAddSingleton<IAiSessionStore, InMemoryAiSessionStore>();
         services.TryAddSingleton<IAiMemoryStore, InMemoryAiMemoryStore>();
         services.TryAddSingleton<IContextCompactor, ChatClientContextCompactor>();
+        services.TryAddSingleton<IAiAttachmentStore, InMemoryAiAttachmentStore>();
         services.TryAddSingleton(options.MemoryOptions);
         services.TryAddSingleton<IAiSessionManager, AiSessionManager>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISessionInterceptor, DefaultSessionInterceptor>());

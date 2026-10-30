@@ -6,6 +6,29 @@ namespace Shiny.AiConversation;
 public record AiInput(IReadOnlyList<MessagePart> Parts, MessageSource Source)
 {
     /// <summary>
+    /// Extra system instructions for this turn only (not stored), e.g. "be concise" from the voice driver.
+    /// </summary>
+    public IReadOnlyList<string> Instructions { get; init; } = [];
+
+    /// <summary>
+    /// Returns a copy with <paramref name="instructions"/> added to <see cref="Instructions"/>.
+    /// </summary>
+    public AiInput WithInstructions(params string[] instructions)
+        => this with { Instructions = [.. this.Instructions, .. instructions] };
+
+    /// <summary>
+    /// Images to send with this input. The session stores them (per <see cref="AiImage.Retention"/>) and the
+    /// stored message references them with <see cref="ImagePart"/>s.
+    /// </summary>
+    public IReadOnlyList<AiImage> Images { get; init; } = [];
+
+    /// <summary>
+    /// Returns a copy with an image attached.
+    /// </summary>
+    public AiInput WithImage(ReadOnlyMemory<byte> data, string mediaType, string? description = null, ImageRetention retention = ImageRetention.DropAfterTurn)
+        => this with { Images = [.. this.Images, new AiImage(data, mediaType, description, retention)] };
+
+    /// <summary>
     /// Typed (or otherwise plain) text.
     /// </summary>
     public static AiInput Text(string text, MessageSource source = MessageSource.Typed)

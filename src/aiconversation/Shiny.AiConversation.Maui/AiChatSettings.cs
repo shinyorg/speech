@@ -1,24 +1,16 @@
 namespace Shiny.AiConversation.Maui;
 
 /// <summary>
-/// The presentation settings for an AI backed chat session - who the bot is, how its bubbles look,
-/// and how much history is pulled in. <see cref="AiChatView"/> owns an instance of this and keeps it
-/// in sync with its bindable properties; it can also be configured at registration time when using
-/// <see cref="AiChatSessionProvider"/> directly against a plain <c>ChatView</c>.
+/// The presentation settings for an AI chat - who the bot is, how its bubbles look, and how much history is
+/// pulled in. <see cref="AiChatView"/> owns an instance and keeps it in sync with its bindable properties.
 /// </summary>
 public class AiChatSettings
 {
-    /// <summary>The session id used when nothing else is supplied - the AI conversation is a single, global session.</summary>
-    public const string DefaultSessionId = "ai";
-
     /// <summary>The sender id used for messages from the device user.</summary>
     public const string UserId = "user";
 
     /// <summary>The sender id used for messages from the AI.</summary>
     public const string BotId = "assistant";
-
-    /// <summary>The session id reported back to the chat control.</summary>
-    public string SessionId { get; set; } = DefaultSessionId;
 
     /// <summary>The display name of the AI. Also used as the chat session name.</summary>
     public string BotName { get; set; } = "Assistant";
@@ -39,17 +31,30 @@ public class AiChatSettings
     public Color? UserBubbleColor { get; set; }
 
     /// <summary>
-    /// When true (default) the chat is backfilled from the registered <see cref="IMessageStore"/> and
-    /// scrolling up pages further back. When no message store is registered, the chat simply starts empty.
+    /// When true (default) the chat is backfilled from the session's stored history and scrolling up pages further back.
     /// </summary>
     public bool LoadHistory { get; set; } = true;
+
+    /// <summary>
+    /// Lets the user attach photos to messages (sent to the model as images).
+    /// </summary>
+    public bool AllowImages { get; set; }
+
+    /// <summary>
+    /// How long attached photos stay in the model's context.
+    /// </summary>
+    public ImageRetention ImageRetention { get; set; } = ImageRetention.DropAfterTurn;
+
+    /// <summary>
+    /// For replies cut off while being spoken, show only the part that was heard.
+    /// </summary>
+    public bool ShowSpokenPartOfInterruptedReplies { get; set; }
 
     /// <summary>Appends a token usage footer to each AI message when the provider reports usage.</summary>
     public bool ShowTokenUsage { get; set; }
 
     /// <summary>
-    /// Renders tappable buttons under an AI bubble when the turn carries <see cref="AiQuestion.Choices"/>.
-    /// Requires structured output to be enabled on the conversation service (the default).
+    /// Renders tappable buttons under the AI bubble that asked a question with <see cref="AiQuestion.Choices"/>.
     /// </summary>
     public bool ShowChoiceButtons { get; set; } = true;
 

@@ -30,7 +30,7 @@
         <PackageReference Include="Shiny.Hosting.Maui"/>
         <PackageReference Include="Shiny.Maui.Shell"/>
         <PackageReference Include="Shiny.Maui.Controls"/>
-        <PackageReference Include="Shiny.DocumentDb.Extensions.DependencyInjection"/>
+        <PackageReference Include="Shiny.Maui.Controls.Camera"/>
         <PackageReference Include="Shiny.DocumentDb.Sqlite"/>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Debug"/>
@@ -46,6 +46,8 @@
         <ProjectReference Include="..\..\src\speech\Shiny.Speech.Typecast\Shiny.Speech.Typecast.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation\Shiny.AiConversation.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui\Shiny.AiConversation.Maui.csproj"/>
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui.Camera\Shiny.AiConversation.Maui.Camera.csproj"/>
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Voice\Shiny.AiConversation.Voice.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Stores.SqliteDocDb\Shiny.AiConversation.Stores.SqliteDocDb.csproj"/>
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Maui.GithubCopilot\Shiny.AiConversation.Maui.GithubCopilot.csproj"/>
     </ItemGroup>

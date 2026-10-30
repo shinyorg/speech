@@ -55,6 +55,27 @@ public class AiConversationOptions(IServiceCollection services)
 
 
     /// <summary>
+    /// Registers the <see cref="IAiAttachmentStore"/> for images. Defaults to <see cref="InMemoryAiAttachmentStore"/>.
+    /// </summary>
+    public AiConversationOptions SetAttachmentStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TStore>()
+        where TStore : class, IAiAttachmentStore
+    {
+        services.TryAddSingleton<IAiAttachmentStore, TStore>();
+        return this;
+    }
+
+
+    /// <summary>
+    /// Stores image attachments as files under <paramref name="directory"/> (e.g. the app data folder).
+    /// </summary>
+    public AiConversationOptions UseFileAttachments(string directory)
+    {
+        services.TryAddSingleton<IAiAttachmentStore>(new FileAiAttachmentStore(directory));
+        return this;
+    }
+
+
+    /// <summary>
     /// Changes the assistant memory settings (limits, or <c>Enabled = false</c> to turn memory off).
     /// </summary>
     public AiConversationOptions ConfigureMemory(Func<AiMemoryOptions, AiMemoryOptions> configure)

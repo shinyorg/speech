@@ -8,6 +8,7 @@
 | Conversation search | `opts.AddConversationSearch(params string[] profiles)` | off |
 | Session titles | `opts.AddSessionTitles()` | off |
 | Long-term memory | `opts.AddLongTermMemory(int sessionCount = 3, params string[] profiles)` | off |
+| Voice selection (`Shiny.AiConversation.Voice`) | `services.AddShinyAiConversationVoice(v => v.AddVoiceSelectionTools())` | off |
 | Your tools | `opts.AddTool(tool, flags, params string[] profiles)` | - |
 
 `profiles` limits a feature to sessions whose `AiSessionSettings.Profile` is in the list; none means every session.
@@ -45,6 +46,16 @@ opts.AddLongTermMemory(sessionCount: 3);
 
 On load, adds a `<past_conversations>` system prompt with the compaction summaries of the most recently
 active **other** sessions (skips `ExcludeFromSearch` sessions and sessions with no summary yet).
+
+## Voice selection tools
+
+From `Shiny.AiConversation.Voice`: `v.AddVoiceSelectionTools()` registers an `ISessionInterceptor` that adds
+to every session:
+- `get_available_voices(culture?)` (silent) - lists `ITextToSpeechService` voices
+- `play_voice_sample(voiceId, sampleText?)` - speaks a sample with that voice
+- `change_voice(voiceId)` (silent) - sets `IVoiceConversation.TextToSpeech` so later replies use it
+
+They act on the `IVoiceConversation` directly (no service-locator lookup). See `voice.md`.
 
 ## Your own tools
 

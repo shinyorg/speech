@@ -1,14 +1,40 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using MauiSample.Services;
 using Shiny;
 using Shiny.AiConversation;
-using Shiny.AiConversation.Maui;
 
 namespace MauiSample.Features.Chat;
 
 /// <summary>
-/// Nothing to wire up: <see cref="AiChatView"/> resolves <see cref="IAiConversationService"/> from the
-/// app's service provider, builds its own chat session provider, and backfills history from the
-/// registered message store. This view model exists only to carry the Shell route.
+/// Hands <see cref="Shiny.AiConversation.Maui.AiChatView"/> the app's shared session (the same one the voice page
+/// uses), so typed and spoken turns land in one conversation.
 /// </summary>
 [ShellMap<ChatPage>("chat")]
-public partial class ChatViewModel : ObservableObject;
+public partial class ChatViewModel(ConversationHost host) : ObservableObject, IPageLifecycleAware
+{
+    [ObservableProperty]
+    IAiSession? session;
+
+    [ObservableProperty]
+    string title = "Chat";
+
+    public async void OnAppearing()
+    {
+        host.SessionChanged += this.OnSessionChanged;
+        this.Show(await host.GetSession());
+    }
+
+    public void OnDisappearing() => host.SessionChanged -= this.OnSessionChanged;
+
+    [RelayCommand]
+    async Task NewConversation() => this.Show(await host.NewConversation());
+
+    void OnSessionChanged(object? sender, IAiSession s) => MainThread.BeginInvokeOnMainThread(() => this.Show(s));
+
+    void Show(IAiSession s)
+    {
+        this.Session = s;
+        this.Title = s.Title ?? "Chat";
+    }
+}

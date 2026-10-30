@@ -31,7 +31,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
             if (initialized)
                 return;
 
-            var initTcs = new TaskCompletionSource();
+            var initTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var initListener = new InitListener(initTcs, logger);
 
             // Must create TTS engine on the main thread
@@ -107,7 +107,7 @@ public class TextToSpeechImpl(ILogger<TextToSpeechImpl> logger) : ITextToSpeechS
         // spoken aloud. Any Tone on the options is discarded for the same reason.
         var spokenText = SpeechAnnotations.Resolve(text, options, SpeechToneCapabilities.None).Text;
 
-        speakTcs = new TaskCompletionSource();
+        speakTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var utteranceId = Guid.NewGuid().ToString();
         var listener = new UtteranceListener(speakTcs, logger, level => AudioLevelChanged?.Invoke(this, level));
 

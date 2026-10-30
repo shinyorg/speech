@@ -11,6 +11,7 @@ static class TokenEstimator
     const int CharsPerToken = 4;
     const int PerMessageOverhead = 4;
     const int PerToolOverhead = 20;
+    const int ImageChars = 1000 * CharsPerToken;   // ~1K tokens per image (providers vary with size)
 
     public static long Estimate(IEnumerable<ChatMessage> messages, IEnumerable<AITool> tools)
     {
@@ -27,6 +28,7 @@ static class TokenEstimator
                     TextContent t => t.Text?.Length ?? 0,
                     FunctionCallContent f => f.Name.Length + (f.Arguments?.Sum(a => a.Key.Length + (a.Value?.ToString()?.Length ?? 0)) ?? 0),
                     FunctionResultContent r => r.Result?.ToString()?.Length ?? 0,
+                    DataContent => ImageChars,
                     _ => 0
                 };
             }

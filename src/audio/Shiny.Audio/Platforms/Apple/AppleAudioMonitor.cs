@@ -40,7 +40,7 @@ public class AppleAudioMonitor(ILogger<AppleAudioMonitor> logger) : IAudioMonito
 #if MACOS
         return Task.FromResult(AccessState.Available);
 #else
-        var tcs = new TaskCompletionSource<AccessState>();
+        var tcs = new TaskCompletionSource<AccessState>(TaskCreationOptions.RunContinuationsAsynchronously);
         AVAudioSession.SharedInstance().RequestRecordPermission(granted =>
             tcs.TrySetResult(granted ? AccessState.Available : AccessState.Denied));
         return tcs.Task;

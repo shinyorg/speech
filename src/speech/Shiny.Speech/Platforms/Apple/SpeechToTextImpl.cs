@@ -45,7 +45,7 @@ public class SpeechToTextImpl(ILogger<SpeechToTextImpl> logger) : ISpeechToTextS
 
     public Task<AccessState> RequestAccess()
     {
-        var tcs = new TaskCompletionSource<AccessState>();
+        var tcs = new TaskCompletionSource<AccessState>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         SFSpeechRecognizer.RequestAuthorization(status =>
         {

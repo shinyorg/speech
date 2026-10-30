@@ -104,10 +104,11 @@ public class FakeCompactor : IContextCompactor
 }
 
 
-public class FakeChatClientProvider(IChatClient client, int? contextWindow = null) : IChatClientProvider
+public class FakeChatClientProvider(IChatClient client, int? contextWindow = null, bool imagesInToolResults = false) : IChatClientProvider
 {
     public Task<IChatClient> GetChatClient(CancellationToken cancelToken = default) => Task.FromResult(client);
     public int? ContextWindow => contextWindow;
+    public bool SupportsImagesInToolResults => imagesInToolResults;
 }
 
 

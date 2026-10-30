@@ -61,8 +61,10 @@
         <Project Path="src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.Maui/Shiny.AiConversation.Maui.csproj" />
+        <Project Path="src/aiconversation/Shiny.AiConversation.Maui.Camera/Shiny.AiConversation.Maui.Camera.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.Maui.GithubCopilot/Shiny.AiConversation.Maui.GithubCopilot.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.Stores.SqliteDocDb/Shiny.AiConversation.Stores.SqliteDocDb.csproj" />
+        <Project Path="src/aiconversation/Shiny.AiConversation.Voice/Shiny.AiConversation.Voice.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.OpenAi/Shiny.AiConversation.OpenAi.csproj" />
         <Project Path="src/aiconversation/tests/Shiny.AiConversation.Tests/Shiny.AiConversation.Tests.csproj" />
 

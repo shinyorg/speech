@@ -71,8 +71,13 @@ Then inject `IAiSessionManager` wherever you need a session.
 - Built-in interceptors; see `built-in-tools.md`
 
 ### SetSqliteDocDbStores(string databasePath) / SetDocDbStores(string documentStoreKey)
-- From `Shiny.AiConversation.Stores.SqliteDocDb`; registers both `IAiSessionStore` and `IAiMemoryStore`
+- From `Shiny.AiConversation.Stores.SqliteDocDb` (Shiny.DocumentDb 14.x); registers both `IAiSessionStore` and `IAiMemoryStore`
+- `SetDocDbStores(key)` resolves the keyed `IDocumentStore` registered by Shiny.DocumentDb's `services.AddDocumentStore(key, o => { ...; o.MapAiConversation(); })`
 - See `session-store.md`
+
+### SetAttachmentStore<T>() / UseFileAttachments(string directory)
+- Where image attachments go; defaults to `InMemoryAiAttachmentStore`. `UseFileAttachments` stores files under `{directory}/{sessionId}/`
+- See `images.md`
 
 ### AddInterceptor<T>()
 - Registers an `ISessionInterceptor` singleton; multiple are supported and run in registration order
@@ -91,11 +96,44 @@ Then inject `IAiSessionManager` wherever you need a session.
 - `InMemoryAiSessionStore` as `IAiSessionStore`
 - `InMemoryAiMemoryStore` as `IAiMemoryStore`
 - `ChatClientContextCompactor` as `IContextCompactor`
+- `InMemoryAiAttachmentStore` as `IAiAttachmentStore`
 - `AiMemoryOptions` (from `ConfigureMemory`)
 - `AiSessionManager` as `IAiSessionManager`
 - `DefaultSessionInterceptor` - adds tools from `AddTool` / DI to each session and the current local time as a system prompt on every turn
 
 It does **not** register any speech or audio services.
+
+## Voice registration (`Shiny.AiConversation.Voice`)
+
+```csharp
+builder.Services.AddSpeechServices();     // or your cloud Shiny.Speech providers - required, never auto-registered
+builder.Services.AddAudioPlayer();        // optional: sounds + gapless cloud-voice playback
+builder.Services.AddShinyAiConversationVoice(v => v
+    .AddVoiceSelectionTools()             // ISessionInterceptor adding get_available_voices / play_voice_sample / change_voice
+    .SetSoundProvider<MySounds>()         // optional; default DefaultSoundProvider (embedded WAVs via IAudioPlayer)
+);
+```
+
+Registers (`TryAdd`): `TimeProvider.System`, `ISoundProvider` → `DefaultSoundProvider`,
+`IVoiceConversation` → `VoiceConversation` (singleton). Register an `IWakeWordDetector` to keep the
+recognizer closed until the wake word. See `voice.md`.
+
+## Camera registration (`Shiny.AiConversation.Maui.Camera`)
+
+```csharp
+builder.UseShinyCamera();                       // IMediaService
+builder.Services.AddAiConversationCamera(c => c
+    .Configure(o => o with { RequireConfirmation = true })
+    .AddScanner(CameraMode.Barcode, async (media, req, ct) => (await media.ScanBarcodeAsync())?.Value)
+    .SetConsent<MyConsent>());                  // default AlertCameraConsent
+```
+
+Registers `ICameraCapture` (`MediaServiceCameraCapture`), `ICameraConsent` and the `CameraToolInterceptor`. See `camera.md`.
+
+## MAUI chat UI (`Shiny.AiConversation.Maui`)
+
+No registration is required: `AiChatView` resolves `IAiSessionManager` / `IAiAttachmentStore` from the app's
+services. `opts.ConfigureChatView(s => s.BotName = "Aura")` registers shared `AiChatSettings`. See `maui.md`.
 
 ## Per-Session Settings
 

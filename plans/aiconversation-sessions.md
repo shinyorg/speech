@@ -1,6 +1,6 @@
 # Shiny.AiConversation v3 — Session-Based Rewrite
 
-Status: **Phases 1–2 done (2026-10-29)** · Branch: `v3` · Started: 2026-10-21
+Status: **Phases 1–4 done (2026-10-29)**; Phase 5 is later work · Branch: `v3` · Started: 2026-10-21
 
 All contracts consolidated in [aiconversation-contracts.md](aiconversation-contracts.md); it is the source of truth when the two differ.
 
@@ -832,20 +832,76 @@ provider-agnostic: Azure, OpenAI, ElevenLabs, Typecast, Microsoft.Extensions.AI,
 - `SQLitePCLRaw.bundle_e_sqlite3` is pinned to 2.1.14 because Shiny.DocumentDb.Sqlite 10.0.2 brings 2.1.11
   (advisory GHSA-2m69-gcr7-jv3q). Drop the pin when DocumentDb is upgraded.
 
-### Phase 3 — Voice
-- [ ] `IVoiceConversation` loop: PTT, wake word, follow-up (L4, L5).
-- [ ] Sentence chunker + markdown stripper (unit tested).
-- [ ] `InterruptionMode` Off / QuietWords (default) / Full (D15); echo handling (L1); quiet words (L2, L3); interrupt recording.
-- [ ] Speech engines (§6.1): explicit provider registration, next-sentence TTS prefetch, latency metric.
-- [ ] Spike: wake-word cost on Android: VAD gate on `IAudioSource` and/or a local `IWakeWordDetector`.
-- [ ] Sound provider (P10), acknowledgement modes (L10), voice-selection tools ported.
+### Phase 3 — Voice (done 2026-10-29)
+- [x] `IVoiceConversation` loop: PTT, wake word, follow-up (L4, L5).
+- [x] Sentence chunker + markdown stripper (unit tested).
+- [x] `InterruptionMode` Off / QuietWords (default) / Full (D15); echo handling (L1); quiet words (L2, L3); interrupt recording.
+- [x] Speech engines (§6.1): explicit provider registration, next-sentence TTS prefetch, latency metric.
+- [x] Spike: wake-word cost on Android: VAD gate on `IAudioSource` and/or a local `IWakeWordDetector`.
+- [x] Sound provider (P10), acknowledgement modes (L10), voice-selection tools ported.
 
-### Phase 4 — MAUI + extras
-- [ ] ChatView adapter rewrite (streaming bubble updates, choices, paging, session list).
-- [ ] `Shiny.AiConversation.Maui.Camera`: `use_camera` (§5.8) with photo / text / barcode / document modes,
+**Phase 3 notes**
+- `Shiny.AiConversation.Voice` (net10.0, AOT-compatible): `IVoiceConversation` / `VoiceConversation`,
+  `AddShinyAiConversationVoice(v => v.AddVoiceSelectionTools().SetSoundProvider<T>())`. It never registers
+  speech engines (D16); the app registers its Shiny.Speech providers.
+- One loop, three entry points: wake word (mic open, `WaitingForWakeWord`), push-to-talk (mic closed while
+  `Off`), follow-up after `AwaitingUser` (`FollowUp`, times out per L5). `VoiceState` gained `Thinking` and `Paused`.
+- Replies stream sentence by sentence (`SentenceChunker` handles decimals, list numbers, abbreviations,
+  initials, fenced code). With `CanSynthesizeToStream` + an `IAudioPlayer`, the next sentence is synthesized
+  while the current one plays (gapless cloud voices). `ResponseLatency` = end of utterance → first audio.
+- Interruption: listening runs while the model thinks *and* speaks. Quiet words act on the first matching
+  partial; Full mode barges in on finals with the confidence floor only once audio has started. `Off` mutes
+  recognition while speaking plus `EchoSettleWindow` (750 ms), then drains. Every interruption calls
+  `turn.Interrupt(spokenText)` with the sentences that fully played. Push-to-talk while speaking stops the
+  reply and listens; `StopSpeaking()` just stops.
+- Stale results are drained *before* the state is announced (`Listening`/`FollowUp`/`Thinking`), so speech
+  that starts the moment the UI says "listening" is never lost; a push-to-talk tap is never dropped as stale.
+- On a follow-up timeout the session keeps its `PendingQuestions` (the chat UI can still answer them); only
+  the voice loop goes back to the wake word / off. This differs from v2, which cleared them.
+- `AiAcknowledgement`: `None` (no sounds, no speech), `AudioBlip` (sounds only), `LessWordy` (speech + a
+  per-turn "be concise" instruction via the new `AiInput.Instructions`), `Full`. Non-silent tool calls before
+  any text speak `ToolAcknowledgement` ("One moment.").
+- Wake-word cost spike result: a local keyword spotter needs a model/library choice (not made). The voice
+  driver now has the seam: register an `IWakeWordDetector` and the recognizer stays closed until the wake
+  word (fixes cost and privacy). A VAD gate would live in the cloud STT providers (Shiny.Speech.Cloud) and is
+  left for later; docs recommend push-to-talk on Android with cloud STT until a detector exists.
+- Pause/Resume release the mic and speaker (for the camera tool in Phase 4).
+
+### Phase 4 — MAUI + extras (done 2026-10-29)
+- [x] ChatView adapter rewrite (streaming bubble updates, choices, paging, session list).
+- [x] `Shiny.AiConversation.Maui.Camera`: `use_camera` (§5.8) with photo / text / barcode / document modes,
       consent gate, `SupportsImagesInToolResults` + follow-up-image fallback, `ImageRetention`, voice pause/resume.
-- [ ] Memory management view (list / view / edit / delete / forget everything) + optional "Remembered" chip.
-- [ ] Sample app updates.
+- [x] Memory management view (list / view / edit / delete / forget everything) + optional "Remembered" chip.
+- [x] Sample app updates.
+
+**Phase 4 notes**
+- `AiChatView` binds `Session` (or resumes the latest session itself and owns it). Bubbles map 1:1 to stored
+  user/assistant messages; a streamed reply is one bubble, created on its first text and updated in place
+  (`MessageChangeKind.Edited`, throttled to 100 ms). Sent messages come back with the stored message id, so the
+  session's own `MessageAdded` merges instead of duplicating. Choice chips send `AiInput.Answer(question, ids)`.
+  History pages by sequence. `ShowContextWarnings` / `ContextPressureChanged` / `Compact()` / `NewConversation()`
+  are the D11 reference UI. `ConfigureChatView` registers app-wide defaults for unset properties. The session
+  list is the sample's job (`IAiSessionManager.Query`); there is no list control. The "Remembered" chip was not built.
+- The MAUI package references the Voice package: the mic action is push-to-talk on `IVoiceConversation`,
+  attaching it to the chat's session.
+- Core gained attachments: `AiInput.WithImage`, `ImagePart` (reference only, never bytes), `IAiAttachmentStore`
+  (`InMemoryAiAttachmentStore` default, `FileAiAttachmentStore` via `UseFileAttachments`), `ImageRetention`
+  (DropAfterTurn / KeepInContext / DontStore). Session delete cascades attachments.
+- Core gained follow-up rounds: `TurnContext.QueueFollowUp(input)` continues the *same* turn with another user
+  input (so the voice driver speaks the follow-up's reply). The camera tool uses it when the provider can't
+  take images in tool results; with `SupportsImagesInToolResults` the photo goes inline and stored history keeps
+  only a `[image/jpeg attachment]` placeholder.
+- The `use_camera` engine lives in core (`CameraToolInterceptor`, `ICameraCapture`, `ICameraConsent`, so it is
+  unit tested without MAUI); the MAUI package supplies `MediaServiceCameraCapture` over `IMediaService`,
+  `AlertCameraConsent`, and `AddAiConversationCamera(c => c.AddScanner(mode, scan))` for analyzer packages.
+  Voice is paused through the new core `IAudioFocusParticipant` (the voice conversation registers as one).
+- `Microsoft.Maui.Controls` went 10.0.80 → 10.0.100 (required by every `Shiny.Maui.Controls.Camera` with
+  `IMediaService`). `SchemaFunction` can return AI content (text + images).
+- Samples: both moved to v3 (a `ConversationHost` shares one session between chat and voice). The MAUI sample
+  adopts the UIScene lifecycle (`UIApplicationSceneManifest` + `SceneDelegate`): current iOS terminates apps
+  without it at launch. Verified on an iPhone 15 Pro.
+- Voice fix found while testing: a push-to-talk tap racing the end of a reply could be lost; the handoff is
+  now atomic and an unconsumed tap is re-queued.
 
 ### Phase 5 — Later
 - [ ] Realtime backend (OpenAI Realtime / Gemini Live) behind `IAiSession`.

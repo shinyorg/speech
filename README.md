@@ -4,7 +4,7 @@ This repository is the home for two complementary library families:
 
 - **Shiny.Speech** — Cross-platform speech services for .NET MAUI and Blazor WebAssembly: speech-to-text and text-to-speech with pluggable cloud providers. Audio capture and playback are provided by the standalone **Shiny.Audio** package (referenced automatically).
 - **Shiny.Audio** — Cross-platform microphone capture (`IAudioSource`) and concurrent stream playback (`IAudioPlayer` / `IAudioPlayback`) with VU-level metering, a live mic-to-output **monitor** (`IAudioMonitor`), audio **route enumeration/selection** (`IAudioDevices`), WAV **recording** (`IAudioRecorder`), real-time capture **effects** (`AudioEffectChain` — pitch, echo, reverb, filters), and echo-cancelled **full-duplex voice** for calls (`IAudioDuplex`), all discoverable through one `IAudio` facade. Usable on its own; also the audio backbone for Shiny.Speech.
-- **Shiny.AiConversation** — Session-based AI conversations over Microsoft.Extensions.AI: streamed replies, typed questions, persisted and resumable sessions, and token/context tracking, with the voice loop (wake word, speech-to-text, text-to-speech) layered on top. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
+- **Shiny.AiConversation** — Session-based AI conversations over Microsoft.Extensions.AI: streamed replies, typed questions, persisted and resumable sessions, compaction, assistant memory and token/context tracking, with voice (wake word, push-to-talk, interruption, text-to-speech), a MAUI chat UI and a camera tool layered on top. AiConversation drives much of the real-world feature set (and bug surface) of the speech stack, which is why both live and ship from here together.
 
 All packages share a single version, defined by `version.json` at the repo root (Nerdbank.GitVersioning).
 
@@ -24,7 +24,9 @@ the AI conversation loop running in the browser. Source: [`samples/BlazorSample`
 | **Shiny.Speech.Typecast** | Typecast provider (TTS only, via the `typecast-csharp` SDK) | net10.0 |
 | **Shiny.Speech.Linux.Whisper** | On-device, offline STT for Linux (incl. Raspberry Pi) running Whisper locally through whisper.cpp — no cloud account, no network | net10.0 |
 | **Shiny.AiConversation** | `IAiSessionManager` / `IAiSession`: persisted, streaming AI sessions with typed questions and context tracking (no audio dependency) | net10.0 |
-| **Shiny.AiConversation.Maui** | `AiChatView` — a .NET MAUI chat control (built on Shiny.Maui.Controls `ChatView`). *Being rebuilt on v3 sessions* | net10.0 (MAUI) |
+| **Shiny.AiConversation.Voice** | `IVoiceConversation`: push-to-talk, wake word, follow-up, interruption and sentence-streamed text-to-speech over Shiny.Speech | net10.0 |
+| **Shiny.AiConversation.Maui** | `AiChatView` (a Shiny.Maui.Controls `ChatView` bound to a session) and `AiMemoryView` | net10.0 (MAUI) |
+| **Shiny.AiConversation.Maui.Camera** | The `use_camera` tool over Shiny's CameraView modal (`IMediaService`) | net10.0 (MAUI) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
 | **Shiny.AiConversation.Stores.SqliteDocDb** | SQLite (Shiny.DocumentDb) session, message and memory stores with full-text search (renamed from `MessageStores.SqliteDocDb`) | net10.0 |
@@ -948,10 +950,9 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 
 > The package-level readme lives at [`src/aiconversation/readme.md`](src/aiconversation/readme.md).
 
-> **v3 is a rewrite in progress.** Text sessions, persistence (SQLite), compaction, assistant memory and
-> conversation search are done. The voice loop (wake word, text-to-speech, interruption, acknowledgements)
-> and the MAUI chat adapter are being rebuilt on top of sessions and are not in this version yet. The core
-> package no longer depends on Shiny.Speech or Shiny.Audio.
+> **v3 is a session-based rewrite** (breaking: `IAiConversationService`, `IMessageStore` and `IContextProvider`
+> are gone). The core package no longer depends on Shiny.Speech or Shiny.Audio; voice lives in
+> `Shiny.AiConversation.Voice`, the chat UI in `Shiny.AiConversation.Maui`.
 
 ## Features
 
@@ -967,6 +968,9 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 - **Assistant memory** — a silent `memory` tool lets the AI keep notes across conversations (session, profile or global scope) without reading them aloud. Only an index goes into each prompt, limits are fed back to the model, and `manager.Memory` lets the user see, edit and delete everything. On by default
 - **Conversation search** — opt-in `search_conversations` / `read_conversation` tools find things in past (and compacted) conversations; plus optional session titles and long-term memory from recent sessions' summaries
 - **SQLite persistence** — `Shiny.AiConversation.Stores.SqliteDocDb` stores sessions, messages and memory with database-checked concurrency and full-text search
+- **Voice** — `Shiny.AiConversation.Voice` drives a session by voice: push-to-talk, optional wake word, follow-up answers without the wake word, interruption (quiet words or full barge-in) and sentence-by-sentence text-to-speech that starts before the reply is finished. Works with any Shiny.Speech provider
+- **MAUI chat UI** — `AiChatView` binds a `ChatView` to a session: streamed bubbles, choice chips, history paging, photos, a push-to-talk action and context warnings; `AiMemoryView` shows (and edits) what the assistant remembers
+- **Images & camera** — `AiInput.WithImage(...)` sends photos (stored as attachments, never inline); `Shiny.AiConversation.Maui.Camera` lets the assistant ask to use the camera (photo, or text/barcode/document scans) after asking the user
 
 ## Quick Start
 
@@ -984,6 +988,12 @@ builder.Services.AddShinyAiConversation(opts =>
     opts.AddLongTermMemory();
     // opts.ConfigureMemory(m => m with { Enabled = false });   // memory is on by default
 });
+
+// Voice (register your Shiny.Speech providers yourself, e.g. AddSpeechServices() or a cloud provider)
+builder.Services.AddShinyAiConversationVoice(voice => voice.AddVoiceSelectionTools());
+
+// MAUI: let the assistant use the camera (needs .UseShinyCamera() on the app builder)
+builder.Services.AddAiConversationCamera();
 ```
 
 ### Chat client providers
@@ -1058,17 +1068,27 @@ await foreach (var e in session.GetEvents(ct))   // first item is always a Snaps
 | `CompactionSettings` | Per session: `AutoCompactThreshold` (0.95, null disables), `KeepRecentMessages`, `MaxMessages`, `FlushToMemory` |
 | `AiMemoryOptions` | `Enabled`, `DisabledProfiles` and the soft limits (document size, index size, scope size, writes per turn) |
 | `IChatClientProvider` | Supplies the `IChatClient`; optional `ContextWindow`. The session adds function invocation itself when the client lacks it |
+| `IVoiceConversation` | `Attach(session, options)`, `PushToTalk()`, `StopSpeaking()`, `Pause()` / `Resume()`, `Detach()`, `GetEvents()`; `State` (Off / WaitingForWakeWord / Listening / FollowUp / Thinking / Speaking / Paused) |
+| `VoiceOptions` | `WakeWord` (off by default), `Interruption` (Off / QuietWords / Full), `QuietWords`, `FollowUpTimeout`, `Acknowledgement` (None / AudioBlip / LessWordy / Full) |
+| `AiChatView` | MAUI `ChatView` bound to `Session` (or it resumes the latest session itself) |
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
 | [Microsoft.Extensions.AI](https://www.nuget.org/packages/Microsoft.Extensions.AI) | `IChatClient` abstraction and the tool loop |
+| Shiny.Speech (this repo) | Speech-to-text / text-to-speech for `Shiny.AiConversation.Voice` |
+| [Shiny.Maui.Controls](https://shinylib.net/controls/) | `ChatView` and the camera modal for the MAUI packages |
 
 ## Samples
 
-- [MAUI sample](samples/MauiSample) and [Blazor sample](samples/BlazorSample) — being moved to the v3 session API (they still target 2.x)
+- [MAUI sample](samples/MauiSample) — chat, voice (Aura), settings and assistant memory, sharing one session through a small `ConversationHost`
+- [Blazor sample](samples/BlazorSample) — the same over browser speech (deployed to https://shinyorg.github.io/speech/)
 
 ## License
 
 MIT
+
+## Commercial Support
+
+Shipping this to production? [ShinySoft Technologies](https://shinysoft.biz), the company that builds and maintains the Shiny libraries, offers priority issue response, support agreements, architecture reviews and private office hours. See [Commercial Support](https://shinylib.net/foundation/support/?utm_source=github&utm_medium=readme#commercial-support) or [get in touch](https://shinysoft.biz/contact?utm_source=github&utm_medium=readme). Community support through GitHub issues and discussions stays free.

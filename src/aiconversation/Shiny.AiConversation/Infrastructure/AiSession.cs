@@ -19,7 +19,9 @@ sealed class AiSession : IAiSession
     readonly TimeProvider time;
     readonly ILogger logger;
     readonly IContextCompactor compactor;
+    readonly IAiAttachmentStore attachments;
     readonly SessionMemory? memory;
+    readonly Dictionary<string, (byte[] Data, string MediaType)> ephemeralImages = new();
     readonly BroadcastChannel<AiSessionEvent> events = new(e => e is TurnEventOccurred { Event: TextDelta });
     readonly SemaphoreSlim headerGate = new(1, 1);
     readonly Lock sync = new();
@@ -42,6 +44,7 @@ sealed class AiSession : IAiSession
         IReadOnlyList<ISessionInterceptor> interceptors,
         TimeProvider time,
         IContextCompactor compactor,
+        IAiAttachmentStore attachments,
         IAiMemoryStore memoryStore,
         AiMemoryOptions memoryOptions,
         ILogger logger
@@ -49,6 +52,7 @@ sealed class AiSession : IAiSession
     {
         this.header = header;
         this.compactor = compactor;
+        this.attachments = attachments;
         this.workingSet = workingSet;
         this.store = store;
         this.chatClientProvider = chatClientProvider;
@@ -231,6 +235,7 @@ sealed class AiSession : IAiSession
         List<AITool>? tools = null;
         AiMessageDocument? reply = null;
         TurnContext? turnContext = null;
+        var turnUserMessages = new HashSet<string>();
         AiTurnResult result;
 
         try
@@ -246,12 +251,8 @@ sealed class AiSession : IAiSession
                 this.header = this.header with { PendingQuestions = [] };
 
             // write early (P6): the user message is stored before anything can fail or be cancelled
-            var userMessage = await this.Append(this.NewMessage(
-                MessageRole.User,
-                turn.Input.Source,
-                MessageStatus.Complete,
-                turn.Input.Parts
-            )).ConfigureAwait(false);
+            var userMessage = await this.AppendInput(turn.Input).ConfigureAwait(false);
+            turnUserMessages.Add(userMessage.MessageId);
 
             this.AddTurnEvent(turn, new TurnStarted(turn.TurnId, this.time.GetUtcNow(), userMessage));
             turn.Token.ThrowIfCancellationRequested();
@@ -279,7 +280,6 @@ sealed class AiSession : IAiSession
             var voice = turn.Input.Source == MessageSource.Voice;
             var toolSet = this.GetTools(turnContext, voice, q => asked = q);
             tools = toolSet.Select(x => x.Tool).ToList();
-            prompt = this.BuildPrompt(turnContext, turn.Input, memoryIndex);
 
             var client = await this.chatClientProvider.GetChatClient(turn.Token).ConfigureAwait(false);
             if (client.GetService<FunctionInvokingChatClient>() == null)
@@ -287,14 +287,32 @@ sealed class AiSession : IAiSession
 
             var options = new ChatOptions { Tools = tools };
             var callNames = new Dictionary<string, string>();
-            await foreach (var update in client.GetStreamingResponseAsync(prompt, options, turn.Token).ConfigureAwait(false))
+            List<MessagePart> parts;
+            while (true)
             {
-                updates.Add(update);
-                foreach (var content in update.Contents)
-                    this.OnContent(turn, content, toolSet, callNames, usage);
-            }
+                var images = await this.LoadPromptImages(turnUserMessages, turn.Token).ConfigureAwait(false);
+                prompt = this.BuildPrompt(turnContext, turn.Input, memoryIndex, images);
 
-            var parts = MessageMapper.ToParts(updates.ToChatResponse().Messages);
+                updates.Clear();
+                await foreach (var update in client.GetStreamingResponseAsync(prompt, options, turn.Token).ConfigureAwait(false))
+                {
+                    updates.Add(update);
+                    foreach (var content in update.Contents)
+                        this.OnContent(turn, content, toolSet, callNames, usage);
+                }
+                parts = MessageMapper.ToParts(updates.ToChatResponse().Messages);
+
+                // a tool (e.g. the camera) ended the round and queued more input: keep going in this same turn
+                var followUps = asked == null ? turnContext.TakeFollowUps() : [];
+                if (followUps.Count == 0)
+                    break;
+
+                reply = await this.Finalize(reply, MessageStatus.Complete, parts, null, usage).ConfigureAwait(false);
+                foreach (var followUp in followUps)
+                    turnUserMessages.Add((await this.AppendInput(followUp).ConfigureAwait(false)).MessageId);
+
+                reply = await this.Append(this.NewMessage(MessageRole.Assistant, MessageSource.Model, MessageStatus.Streaming, [])).ConfigureAwait(false);
+            }
             var text = MessageMapper.GetText(parts);
 
             // L8: a model that never calls ask_user but ends on a question still keeps the conversation open
@@ -368,6 +386,9 @@ sealed class AiSession : IAiSession
         {
             if (this.activeTurn == turn)
                 this.activeTurn = null;
+
+            // DontStore images exist only for the turn they arrived in
+            this.ephemeralImages.Clear();
         }
         turn.End(result);
     }
@@ -426,7 +447,7 @@ sealed class AiSession : IAiSession
     /// Prompt assembly order: interceptor prompts, mode instructions, memory index, rolling summary, then
     /// non-compacted history (which ends with the new user message).
     /// </summary>
-    List<ChatMessage> BuildPrompt(TurnContext? turnContext, AiInput? input, string? memoryIndex = null)
+    List<ChatMessage> BuildPrompt(TurnContext? turnContext, AiInput? input, string? memoryIndex = null, IReadOnlyDictionary<string, DataContent>? images = null)
     {
         var system = new List<string>();
         List<AiMessageDocument> history;
@@ -444,6 +465,9 @@ sealed class AiSession : IAiSession
         if (input?.Source == MessageSource.Voice)
             system.Add(VoiceModePrompt);
 
+        if (input != null)
+            system.AddRange(input.Instructions);
+
         if (memoryIndex != null)
             system.Add(memoryIndex);
 
@@ -454,8 +478,82 @@ sealed class AiSession : IAiSession
         if (!String.IsNullOrWhiteSpace(summary))
             messages.Add(new ChatMessage(ChatRole.System, $"{MessageMapper.SummaryPrefix}\n{summary}"));
 
-        messages.AddRange(MessageMapper.ToChatMessages(history));
+        messages.AddRange(MessageMapper.ToChatMessages(history, images));
         return messages;
+    }
+
+
+    /// <summary>
+    /// Stores the input's images (or keeps <see cref="ImageRetention.DontStore"/> ones in memory) and appends
+    /// the user message referencing them.
+    /// </summary>
+    async Task<AiMessageDocument> AppendInput(AiInput input)
+    {
+        var parts = input.Parts.ToList();
+        foreach (var image in input.Images)
+        {
+            AttachmentRef attachment;
+            if (image.Retention == ImageRetention.DontStore)
+            {
+                attachment = new AttachmentRef("ephemeral:" + Guid.NewGuid().ToString("N"), image.MediaType, image.Data.Length);
+                lock (this.sync)
+                    this.ephemeralImages[attachment.AttachmentId] = (image.Data.ToArray(), image.MediaType);
+            }
+            else
+            {
+                attachment = await this.attachments.Save(image.Data, image.MediaType, this.SessionId, CancellationToken.None).ConfigureAwait(false);
+            }
+            parts.Add(new ImagePart(attachment, image.Description, image.Retention));
+        }
+
+        return await this.Append(this.NewMessage(MessageRole.User, input.Source, MessageStatus.Complete, parts)).ConfigureAwait(false);
+    }
+
+
+    /// <summary>
+    /// The image bytes this prompt includes: images kept in context, plus those that arrived in this turn.
+    /// Everything else is sent as a short "[image: …]" mention.
+    /// </summary>
+    async Task<Dictionary<string, DataContent>?> LoadPromptImages(HashSet<string> turnUserMessages, CancellationToken ct)
+    {
+        List<(ImagePart Part, string MessageId)> wanted;
+        lock (this.sync)
+        {
+            wanted = this.workingSet
+                .Where(m => m.Role == MessageRole.User)
+                .SelectMany(m => m.Parts.OfType<ImagePart>().Select(p => (Part: p, m.MessageId)))
+                .Where(x => x.Part.Retention == ImageRetention.KeepInContext || turnUserMessages.Contains(x.MessageId))
+                .ToList();
+        }
+        if (wanted.Count == 0)
+            return null;
+
+        var images = new Dictionary<string, DataContent>();
+        foreach (var (part, _) in wanted)
+        {
+            byte[]? data = null;
+            lock (this.sync)
+            {
+                if (this.ephemeralImages.TryGetValue(part.Attachment.AttachmentId, out var e))
+                    data = e.Data;
+            }
+
+            if (data == null && !part.Attachment.AttachmentId.StartsWith("ephemeral:", StringComparison.Ordinal))
+            {
+                try
+                {
+                    data = await this.attachments.Load(part.Attachment.AttachmentId, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    this.logger.LogWarning(ex, "Failed to load attachment {AttachmentId}", part.Attachment.AttachmentId);
+                }
+            }
+
+            if (data != null)
+                images[part.Attachment.AttachmentId] = new DataContent(data, part.Attachment.MediaType);
+        }
+        return images;
     }
 
 

@@ -59,24 +59,51 @@ sealed class UsageAccumulator
 static class QuestionHeuristic
 {
     public const string QuestionId = "reply";
-    static readonly char[] Trailing = [' ', '\t', '\r', '\n', '"', '\'', ')', ']', '*', '_', '”', '’'];
-    static readonly char[] SentenceEnd = ['.', '!', '?', '\n', '。'];
+    static readonly char[] SentenceEnd = ['.', '!', '?', '\n', '。', '！', '？'];
 
+    /// <summary>
+    /// True when the text ends in a question, ignoring closing markup and terminator runs ("Really?!").
+    /// </summary>
     public static bool EndsWithQuestion(string? text)
     {
         if (String.IsNullOrWhiteSpace(text))
             return false;
 
-        var trimmed = text.TrimEnd(Trailing);
-        return trimmed.EndsWith('?') || trimmed.EndsWith('？');
+        var i = TrimClosing(text);
+        var hasQuestion = false;
+        while (i >= 0 && IsTerminator(text[i]))
+        {
+            if (text[i] is '?' or '？')
+                hasQuestion = true;
+            i--;
+        }
+        return hasQuestion;
     }
 
     public static string LastQuestion(string text)
     {
-        var trimmed = text.TrimEnd(Trailing);
-        var start = trimmed.Length > 1 ? trimmed.LastIndexOfAny(SentenceEnd, trimmed.Length - 2) : -1;
-        return trimmed[(start + 1)..].Trim().TrimStart('*', '_', '-', ' ');
+        var end = TrimClosing(text);
+        var i = end;
+        while (i >= 0 && IsTerminator(text[i]))
+            i--;
+
+        var start = i >= 0 ? text.LastIndexOfAny(SentenceEnd, i) : -1;
+        return text[(start + 1)..(end + 1)].Trim().TrimStart('*', '_', '-', ' ');
     }
+
+    static int TrimClosing(string text)
+    {
+        var i = text.Length - 1;
+        while (i >= 0 && IsClosingMarkup(text[i]))
+            i--;
+        return i;
+    }
+
+    static bool IsClosingMarkup(char c)
+        => Char.IsWhiteSpace(c) || c is '"' or '\'' or '*' or ')' or ']' or '}' or '`' or '_' or '~' or '”' or '’';
+
+    static bool IsTerminator(char c)
+        => c is '?' or '!' or '.' or '？' or '！' or '。';
 }
 
 
