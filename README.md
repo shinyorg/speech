@@ -11,6 +11,8 @@ All packages share a single version, defined by `version.json` at the repo root 
 👉 **[Try the live Blazor WebAssembly playground](https://shinyorg.github.io/speech/)** — speech-to-text, text-to-speech, and
 the AI conversation loop running in the browser. Source: [`samples/BlazorSample`](samples/BlazorSample).
 
+📚 **Documentation:** [Speech](https://shinylib.net/speech/) · [Audio](https://shinylib.net/audio/) · [AI Conversations](https://shinylib.net/aiconversation/)
+
 ## Libraries
 
 | Package | Description | Targets |

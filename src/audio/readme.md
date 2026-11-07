@@ -149,4 +149,4 @@ builder.Services.AddLinuxAudio();   // no-op when not running on Linux
 It supplies all four services — `IAudioSource`, `IAudioPlayer`, `IAudioDevices` and `IAudioMonitor` —
 over PulseAudio/PipeWire, falling back to ALSA on headless systems and containers.
 
-See https://shinylib.net/speech for full documentation.
+See https://shinylib.net/audio for full documentation.
