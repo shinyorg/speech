@@ -26,6 +26,7 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 - **Voice** — `Shiny.AiConversation.Voice` drives a session by voice: push-to-talk, optional wake word, follow-up answers without the wake word, interruption (quiet words or full barge-in) and sentence-by-sentence text-to-speech that starts before the reply is finished. Works with any Shiny.Speech provider
 - **MAUI chat UI** — `AiChatView` binds a `ChatView` to a session: streamed bubbles, choice chips, history paging, photos, a push-to-talk action and context warnings; `AiMemoryView` shows (and edits) what the assistant remembers
 - **Images & camera** — `AiInput.WithImage(...)` sends photos (stored as attachments, never inline); `Shiny.AiConversation.Maui.Camera` lets the assistant ask to use the camera (photo, or text/barcode/document scans) after asking the user
+- **AG-UI & A2UI** — `Shiny.AiConversation.AgUi` runs a session as an AG-UI agent (`session.RunAgUiAsync`), so the Shiny `AgentView` or any AG-UI front end renders it, `ask_user` questions included; `AddAgUiRenderTool()` lets the model draw A2UI surfaces and `AddAgUiChatClient(url)` uses a remote AG-UI agent as the chat client
 
 ## Quick Start
 

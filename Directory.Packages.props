@@ -16,6 +16,9 @@
         <PackageVersion Include="Microsoft.Extensions.AI" Version="10.7.0"/>
         <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0"/>
         <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.7.0"/>
+        <!-- The official AG-UI .NET SDK: protocol types, and the HTTP/SSE client behind AddAgUiChatClient -->
+        <PackageVersion Include="AGUI.Abstractions" Version="1.0.1"/>
+        <PackageVersion Include="AGUI.Client" Version="1.0.1"/>
         <PackageVersion Include="Shiny.DocumentDb.Sqlite" Version="14.1.0"/>
         <!-- Pinned above what Microsoft.Data.Sqlite (via Shiny.DocumentDb.Sqlite) brings: 2.1.11 has advisory GHSA-2m69-gcr7-jv3q. -->
         <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14"/>

@@ -28,6 +28,7 @@ the AI conversation loop running in the browser. Source: [`samples/BlazorSample`
 | **Shiny.AiConversation** | `IAiSessionManager` / `IAiSession`: persisted, streaming AI sessions with typed questions and context tracking (no audio dependency) | net10.0 |
 | **Shiny.AiConversation.Voice** | `IVoiceConversation`: push-to-talk, wake word, follow-up, interruption and sentence-streamed text-to-speech over Shiny.Speech | net10.0 |
 | **Shiny.AiConversation.Maui** | `AiChatView` (a Shiny.Maui.Controls `ChatView` bound to a session) and `AiMemoryView` | net10.0 (MAUI) |
+| **Shiny.AiConversation.AgUi** | AG-UI for sessions: `session.RunAgUiAsync(...)` runs a session as an AG-UI event stream (questions become interrupts), the `render_ui` tool lets the model draw A2UI surfaces, and `AddAgUiChatClient(url)` talks to a remote AG-UI agent | net10.0 |
 | **Shiny.AiConversation.Maui.Camera** | The `use_camera` tool over Shiny's CameraView modal (`IMediaService`) | net10.0 (MAUI) |
 | **Shiny.AiConversation.OpenAi** | Ready-made static OpenAI-compatible chat client provider | net10.0 |
 | **Shiny.AiConversation.Maui.GithubCopilot** | MAUI GitHub Copilot provider (device-code OAuth, SecureStorage) | net10.0 (MAUI) |
@@ -973,6 +974,7 @@ streamed replies, typed questions, persisted and resumable sessions, and token/c
 - **Voice** — `Shiny.AiConversation.Voice` drives a session by voice: push-to-talk, optional wake word, follow-up answers without the wake word, interruption (quiet words or full barge-in) and sentence-by-sentence text-to-speech that starts before the reply is finished. Works with any Shiny.Speech provider
 - **MAUI chat UI** — `AiChatView` binds a `ChatView` to a session: streamed bubbles, choice chips, history paging, photos, a push-to-talk action and context warnings; `AiMemoryView` shows (and edits) what the assistant remembers
 - **Images & camera** — `AiInput.WithImage(...)` sends photos (stored as attachments, never inline); `Shiny.AiConversation.Maui.Camera` lets the assistant ask to use the camera (photo, or text/barcode/document scans) after asking the user
+- **AG-UI & A2UI** — `Shiny.AiConversation.AgUi` runs a session as an [AG-UI](https://docs.ag-ui.com) agent, so the Shiny `AgentView` (MAUI and Blazor) or any AG-UI front end renders it: streamed text, tool calls, `ask_user` questions as interrupts with their choices. `opts.AddAgUiRenderTool()` lets the model draw interactive [A2UI](https://a2ui.org) surfaces from the Shiny Controls catalog (DataGrid, Gauge, DateRangePicker, ...), and `opts.AddAgUiChatClient(url)` uses a remote AG-UI agent as the chat client
 
 ## Quick Start
 

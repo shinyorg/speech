@@ -59,6 +59,7 @@
         <File Path=".github\workflows\sync-speech-skill.yml" />
         <File Path="skills/shiny-aiconversation/SKILL.md" />
         <Project Path="src/aiconversation/Shiny.AiConversation/Shiny.AiConversation.csproj" />
+        <Project Path="src/aiconversation/Shiny.AiConversation.AgUi/Shiny.AiConversation.AgUi.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.GithubCopilot/Shiny.AiConversation.GithubCopilot.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.Maui/Shiny.AiConversation.Maui.csproj" />
         <Project Path="src/aiconversation/Shiny.AiConversation.Maui.Camera/Shiny.AiConversation.Maui.Camera.csproj" />
