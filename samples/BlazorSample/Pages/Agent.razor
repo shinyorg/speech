@@ -1,0 +1,76 @@
+@page "/agent"
+@*
+    Only compiled when the sibling controls repo is present (see BlazorSample.csproj): AgentView comes
+    from Shiny.Blazor.Controls.Agents, which isn't on NuGet yet.
+*@
+@using Shiny.Blazor.Controls.Agents
+@using Shiny.Controls.AgentUI
+@using Shiny.AiConversation.AgUi
+@inject IAiSessionManager Manager
+@implements IAsyncDisposable
+
+<PageTitle>Agent</PageTitle>
+
+<HeadContent>
+    @* Shiny Controls theme tokens and the scoped CSS of the AgentView and its A2UI controls *@
+    <link href="_content/Shiny.Blazor.Controls/css/shiny-theme.css" rel="stylesheet" />
+    <link href="BlazorSample.styles.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="agent-container">
+    <div class="chat-header">
+        <span>@(session?.Title ?? "Agent")</span>
+        <button class="btn-primary" @onclick="NewConversation" disabled="@(session == null)">New conversation</button>
+    </div>
+
+    <div class="agent-host shiny-theme-dark">
+        @if (agentSession != null)
+        {
+            @* @key: a new conversation is a new AgentView, so the old thread's items go with it *@
+            <AgentView @key="agentSession"
+                       Session="agentSession"
+                       Suggestions="suggestions"
+                       PlaceholderText="Ask the agent..." />
+        }
+    </div>
+</div>
+
+@code {
+    // The model draws these with render_ui, or asks with ask_user (a choices card)
+    static readonly IReadOnlyList<string> suggestions =
+    [
+        "Show my week's step counts in a table",
+        "Help me plan a trip: ask me where and when",
+        "Show a gauge of my battery at 72%"
+    ];
+
+    IAiSession? session;
+    IAgentSession? agentSession;
+
+    protected override async Task OnInitializedAsync() => await Start();
+
+    async Task Start()
+    {
+        // A session of its own, separate from the Chat/Aura one (ConversationHost): the voice conversation
+        // may be attached to that one, and a session must not be driven from two places at once. The
+        // "agent" profile gives it the render_ui tool (Program.cs).
+        session = await Manager.Start(new AiSessionSettings { Profile = AgentProfile.Name });
+
+        // The whole bridge: an AG-UI run is a session turn
+        agentSession = AgentSession.Create(session.SessionId, session.RunAgUiAsync);
+    }
+
+    async Task NewConversation()
+    {
+        var old = session;
+        await Start();
+        if (old != null)
+            await old.DisposeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (session != null)
+            await session.DisposeAsync();
+    }
+}

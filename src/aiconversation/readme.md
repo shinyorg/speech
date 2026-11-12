@@ -109,6 +109,23 @@ await foreach (var e in session.GetEvents(ct))   // first item is always a Snaps
 }
 ```
 
+### AG-UI: render a session in the Shiny AgentView
+
+`samples/BlazorSample` has an **Agent** page (`Pages/Agent.razor`) that hosts the Shiny `AgentView` over a real session:
+
+```csharp
+// Program.cs: the model can draw A2UI surfaces, only in sessions started with the "agent" profile
+opts.AddAgUiRenderTool(catalogInstructions: AgentCatalogPrompt.Build(), profiles: "agent");
+
+// Agent.razor: an AG-UI run is a session turn; ask_user questions show as interrupt cards
+var session = await manager.Start(new AiSessionSettings { Profile = "agent" });
+agentSession = AgentSession.Create(session.SessionId, session.RunAgUiAsync);
+```
+
+`Shiny.Blazor.Controls.Agents` isn't on NuGet yet, so the sample takes it from a sibling checkout of
+[shinyorg/controls](https://github.com/shinyorg/controls) (`../controls` next to this repo, or `-p:ShinyControlsRepo=<path>`).
+Without it the page and its tab are left out and the sample builds as before.
+
 ## API Overview
 
 | Type | Description |

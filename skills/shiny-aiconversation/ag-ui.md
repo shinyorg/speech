@@ -30,6 +30,17 @@ agentView.Session = AgentSession.Create(session.SessionId, session.RunAgUiAsync)
 <AgentView Session="@(AgentSession.Create(session.SessionId, session.RunAgUiAsync))" />
 ```
 
+## Sample
+
+`samples/BlazorSample/Pages/Agent.razor` in the Shiny speech repo is a working host:
+
+- the page starts its own session with `new AiSessionSettings { Profile = "agent" }`, separate from the session the chat/voice pages use;
+- `Program.cs` registers `opts.AddAgUiRenderTool(catalogInstructions: AgentCatalogPrompt.Build(), profiles: "agent")`, so only those sessions get `render_ui`;
+- `Services/AgentCatalogPrompt.cs` builds a compact catalog summary from `A2UICatalog.CreateShiny()`: the basic catalog's rules, the Shiny instructions, and one line of properties per component. The full schema is about 58 KB, which is too much to send with every request;
+- the page links `_content/Shiny.Blazor.Controls/css/shiny-theme.css` and the app's `{Assembly}.styles.css` (AgentView uses scoped CSS) through `<HeadContent>`, and wraps the view in `shiny-theme-dark` to match the sample's dark shell.
+
+The sample references `Shiny.Blazor.Controls.Agents` from a sibling `controls` checkout (MSBuild property `ShinyControlsRepo`, constant `SHINY_AGENTS`) until the package ships on NuGet.
+
 ## Mapping
 
 | Session | AG-UI |

@@ -31,7 +31,12 @@ public class ConversationHost(IAiSessionManager manager, IVoiceConversation voic
         await this.gate.WaitAsync();
         try
         {
-            this.session ??= await manager.GetLatest() ?? await manager.Start();
+            if (this.session is null)
+            {
+                // the Agent page keeps its own sessions (profile "agent", see AgentProfile); never pick one up here
+                var latest = await manager.GetLatest();
+                this.session = latest is { Settings.Profile: not "agent" } ? latest : await manager.Start();
+            }
             return this.session;
         }
         finally

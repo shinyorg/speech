@@ -303,6 +303,21 @@ textarea:focus, input[type="text"]:focus, select:focus {
 .hidden { display: none; }
 
 /* ══════════════════ AI Chat Page ══════════════════ */
+/* Agent page: the AgentView fills the space under the header and owns the scrolling */
+.agent-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg);
+}
+
+.agent-host {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .chat-container {
     display: flex;
     flex-direction: column;

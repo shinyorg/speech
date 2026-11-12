@@ -4,6 +4,9 @@ using Shiny;
 using Shiny.AiConversation;
 using BlazorSample;
 using BlazorSample.Services;
+#if SHINY_AGENTS
+using Shiny.Blazor.Controls;
+#endif
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -33,10 +36,19 @@ builder.Services.AddShinyAiConversation(opts =>
     );
     opts.AddInterceptor<SampleInterceptor>();
     opts.AddSessionTitles();
+#if SHINY_AGENTS
+    // The Agent page: render_ui lets the model draw A2UI surfaces (Shiny catalog) in the AgentView.
+    // Only sessions started with the "agent" profile get it; the Chat page can't draw them.
+    opts.AddAgUiRenderTool(catalogInstructions: AgentCatalogPrompt.Build(), profiles: AgentProfile.Name);
+#endif
 });
 
 // Voice over the session; it never registers speech engines (the browser ones are registered above)
 builder.Services.AddShinyAiConversationVoice(voice => voice.AddVoiceSelectionTools());
 builder.Services.AddSingleton<ConversationHost>();
+#if SHINY_AGENTS
+// Shiny.Blazor.Controls services (toasts, dialogs, ...) the AgentView's A2UI controls may use
+builder.Services.AddShinyControls();
+#endif
 
 await builder.Build().RunAsync();

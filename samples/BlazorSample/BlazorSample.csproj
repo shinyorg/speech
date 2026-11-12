@@ -20,4 +20,28 @@
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.OpenAi\Shiny.AiConversation.OpenAi.csproj" />
         <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.Voice\Shiny.AiConversation.Voice.csproj" />
     </ItemGroup>
+
+    <!--
+        The Agent page (Pages/Agent.razor) renders a session with the Shiny AgentView over AG-UI. The
+        Shiny.Blazor.Controls.Agents package isn't on NuGet yet, so it comes from a sibling checkout of
+        github.com/shinyorg/controls when one is there (override with -p:ShinyControlsRepo=...). Without
+        it the page and its nav link drop out and the sample builds exactly as before (CI does this).
+        TODO: make this a PackageReference once Shiny.Blazor.Controls.Agents ships.
+    -->
+    <PropertyGroup>
+        <ShinyControlsRepo Condition="'$(ShinyControlsRepo)' == ''">$(MSBuildThisFileDirectory)..\..\..\controls</ShinyControlsRepo>
+        <ShinyAgentsProject>$(ShinyControlsRepo)\src\Shiny.Blazor.Controls.Agents\Shiny.Blazor.Controls.Agents.csproj</ShinyAgentsProject>
+        <ShinyAgents Condition="Exists('$(ShinyAgentsProject)')">true</ShinyAgents>
+        <DefineConstants Condition="'$(ShinyAgents)' == 'true'">$(DefineConstants);SHINY_AGENTS</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(ShinyAgents)' == 'true'">
+        <ProjectReference Include="$(ShinyAgentsProject)" />
+        <ProjectReference Include="..\..\src\aiconversation\Shiny.AiConversation.AgUi\Shiny.AiConversation.AgUi.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(ShinyAgents)' != 'true'">
+        <Content Remove="Pages\Agent.razor" />
+        <Compile Remove="Services\AgentCatalogPrompt.cs" />
+    </ItemGroup>
 </Project>
